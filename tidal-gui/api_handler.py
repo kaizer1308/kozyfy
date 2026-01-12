@@ -3,6 +3,7 @@ import subprocess
 import threading
 import json
 import os
+import re
 
 class TidalApiHandler:
     def __init__(self, base_url="https://tidal-api.binimum.org"):
@@ -87,7 +88,7 @@ class TidalApiHandler:
         except Exception as e:
             return {"error": str(e)}
 
-    def download_stream(self, stream_url, output_path, metadata=None, cover_path=None, update_callback=None):
+    def download_stream(self, stream_url, output_path, metadata=None, cover_path=None, update_callback=None, duration=None):
         """
         Download the stream using ffmpeg with metadata and cover art.
         """
@@ -125,25 +126,43 @@ class TidalApiHandler:
                      cmd.extend(["-metadata", f"{key}={value}"])
 
         cmd.extend([
-            "-c:a", "copy", # Ensure audio is copied without re-encoding
+            "-c:a", "copy",
             "-y",
-            "-loglevel", "error",
+            "-loglevel", "info", # Increased log level for progress parsing
             output_path
         ])
 
         try:
             if update_callback:
-                update_callback(f"Starting downloaded with metadata to {output_path}...")
+                update_callback(0) # Start with 0%
             
-            # Print command for debug
-            # print("Running:", " ".join(cmd))
+            # Use Popen to capture stderr in real-time
+            # connect stdout to DEVNULL to avoid buffer filling up since we only read stderr
+            process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, encoding='utf-8')
             
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            time_pattern = re.compile(r"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})")
             
-            if result.returncode == 0:
-                return True, "Download completed successfully."
+            while True:
+                line = process.stderr.readline()
+                if not line and process.poll() is not None:
+                    break
+                
+                if line and update_callback and duration:
+                    match = time_pattern.search(line)
+                    if match:
+                        h, m, s, ms = map(int, match.groups())
+                        current_sec = h*3600 + m*60 + s + ms/100
+                        percent = min((current_sec / duration) * 100, 99)
+                        update_callback(percent)
+            
+            process.wait()
+            
+            if process.returncode == 0:
+                if update_callback: update_callback(100)
+                return True, "Download completed."
             else:
-                return False, f"FFmpeg error: {result.stderr}"
+                err = process.stderr.read()
+                return False, f"FFmpeg error: {err}"
 
         except Exception as e:
             return False, str(e)

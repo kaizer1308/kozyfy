@@ -1,4 +1,5 @@
 import customtkinter as ctk
+from tkinter import filedialog
 import threading
 import os
 import glob
@@ -11,6 +12,7 @@ from api_handler import TidalApiHandler
 from logic.playback import PlaybackManager
 from ui.player_bar import PlayerBar
 from ui.search_view import SearchResultsView
+from ui.downloads_view import DownloadsWindow
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -25,7 +27,11 @@ class TidalApp(ctk.CTk):
         self.api = TidalApiHandler()
         self.api.set_base_url("https://triton.squid.wtf")
         
+        self.download_path = os.getcwd()
+
         self.playback = PlaybackManager()
+        
+        self.downloads_window = DownloadsWindow(self)
         
         # State
         self.current_results = []
@@ -52,6 +58,9 @@ class TidalApp(ctk.CTk):
 
         # Settings Button (Left)
         ctk.CTkButton(self.top_frame, text="Settings", width=100, command=self.open_settings).pack(side="left", padx=5)
+
+        # Downloads Button (Left)
+        ctk.CTkButton(self.top_frame, text="Downloads", width=100, command=self.downloads_window.show_window).pack(side="left", padx=5)
 
         # Filter Switch (Rightmost)
         self.filter_var = ctk.BooleanVar(value=False)
@@ -173,6 +182,10 @@ class TidalApp(ctk.CTk):
 
     # --- Download Logic (Controller) ---
     def start_download(self, track_id, filename):
+        if track_id in self.downloads_window.active_downloads:
+            print(f"[App] Skipping download: {filename} (Already in queue)")
+            return
+
         quality = self.quality_var.get()
         threading.Thread(target=self._download_worker, args=(track_id, filename, quality)).start()
 
@@ -182,7 +195,12 @@ class TidalApp(ctk.CTk):
 
     def _download_worker(self, track_id, filename, quality):
         print(f"[App] Downloading {filename}...")
+        
+        # Add to Download UI
+        self.after(0, lambda: self.downloads_window.add_download(track_id, filename))
+        
         details = self.api.get_track_details(track_id)
+        duration = details.get("duration", 0)
         
         metadata = {
             "title": details.get("title", filename.split(" - ")[-1]),
@@ -212,14 +230,20 @@ class TidalApp(ctk.CTk):
         
         if not final_url:
             print("[App] Download failed: No URL")
+            self.after(0, lambda: self.downloads_window.finish_download(track_id, False, "No URL"))
             return
             
         safe_name = "".join([c for c in filename if c.isalpha() or c.isdigit() or c in " .-_()"]).strip()
         ext = ".flac" if quality in ["HI_RES_LOSSLESS", "LOSSLESS"] else ".m4a"
-        output_path = os.path.join(os.getcwd(), f"{safe_name}{ext}")
+        output_path = os.path.join(self.download_path, f"{safe_name}{ext}")
         
-        success, msg = self.api.download_stream(final_url, output_path, metadata, cover_path, lambda m: print(f"[DL] {m}"))
+        def progress_cb(p):
+            self.after(0, lambda: self.downloads_window.update_download(track_id, p))
+        
+        success, msg = self.api.download_stream(final_url, output_path, metadata, cover_path, progress_cb, duration=duration)
+        
         print(f"[App] Download {'Complete' if success else 'Failed'}: {output_path}")
+        self.after(0, lambda: self.downloads_window.finish_download(track_id, success, msg))
 
         # Cleanup
         if cover_path and os.path.exists(cover_path): os.remove(cover_path)
@@ -272,15 +296,35 @@ class TidalApp(ctk.CTk):
         # Simplified for brevity
         win = ctk.CTkToplevel(self)
         win.title("Settings")
-        win.geometry("400x150")
+        win.geometry("400x250")
+        
+        # API URL
         ctk.CTkLabel(win, text="API URL:").pack(pady=5)
         ent = ctk.CTkEntry(win, width=300)
         ent.insert(0, self.api.base_url)
         ent.pack(pady=5)
+
+        # Download Path
+        ctk.CTkLabel(win, text="Download Location:").pack(pady=5)
+        path_frame = ctk.CTkFrame(win, fg_color="transparent")
+        path_frame.pack(pady=5, fill="x", padx=20)
+        
+        path_label = ctk.CTkLabel(path_frame, text=self.download_path, anchor="w")
+        path_label.pack(side="left", fill="x", expand=True, padx=5)
+        
+        def choose_folder():
+            d = filedialog.askdirectory(initialdir=self.download_path)
+            if d:
+                self.download_path = d
+                path_label.configure(text=d)
+        
+        ctk.CTkButton(path_frame, text="...", width=40, command=choose_folder).pack(side="right", padx=5)
+
         def save():
             self.api.set_base_url(ent.get())
             win.destroy()
-        ctk.CTkButton(win, text="Save", command=save).pack(pady=10)
+        
+        ctk.CTkButton(win, text="Save", command=save).pack(pady=20)
 
     def on_closing(self):
         # Stop playback
