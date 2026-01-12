@@ -1,4 +1,4 @@
-# kozytidal
+# kozyfy
 
 python gui app to search, stream, and download hi-res music from tidal using the hifi-api.
 

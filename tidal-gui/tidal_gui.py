@@ -19,7 +19,7 @@ class TidalApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("KozyTidal")
+        self.title("Kozyfy")
         self.geometry("1000x800")
         
         self.api = TidalApiHandler()

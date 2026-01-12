@@ -38,5 +38,10 @@ auth.json
 # Logs
 *.log
 
+# PyInstaller
+build/
+dist/
+*.spec
+
 #hifi-api
 hifi-api
