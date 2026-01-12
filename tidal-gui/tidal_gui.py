@@ -78,6 +78,14 @@ class TidalApp(ctk.CTk):
         self.search_frame = ctk.CTkFrame(self)
         self.search_frame.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="ew")
 
+        # Search Type Selector
+        self.search_type_var = ctk.StringVar(value="Tracks")
+        self.search_type_combo = ctk.CTkComboBox(self.search_frame, 
+                                                 values=["Tracks", "Albums"],
+                                                 variable=self.search_type_var,
+                                                 width=100)
+        self.search_type_combo.pack(side="left", padx=(10, 0), pady=10)
+
         self.search_entry = ctk.CTkEntry(self.search_frame, placeholder_text="Enter artist, title or album...")
         self.search_entry.pack(side="left", fill="x", expand=True, padx=10, pady=10)
         self.search_entry.bind("<Return>", lambda event: self.start_search())
@@ -104,7 +112,16 @@ class TidalApp(ctk.CTk):
         threading.Thread(target=self.run_search, args=(query,)).start()
 
     def run_search(self, query):
-        results = self.api.search_tracks(query)
+        search_type = self.search_type_var.get()
+        if search_type == "Albums":
+            results = self.api.search_albums(query)
+            if isinstance(results, list):
+                for r in results: r['_type'] = 'ALBUM'
+        else:
+            results = self.api.search_tracks(query)
+            if isinstance(results, list):
+                for r in results: r['_type'] = 'TRACK'
+                
         self.after(0, lambda: self.handle_search_results(results))
 
     def handle_search_results(self, results):
@@ -181,20 +198,63 @@ class TidalApp(ctk.CTk):
         self.current_cover_ref = cover_img # Prevent GC
 
     # --- Download Logic (Controller) ---
-    def start_download(self, track_id, filename):
-        if track_id in self.downloads_window.active_downloads:
-            print(f"[App] Skipping download: {filename} (Already in queue)")
+    def start_download(self, item_id, item_title, item_type="TRACK"):
+        if item_type == "ALBUM":
+             threading.Thread(target=self._download_album_worker, args=(item_id, item_title)).start()
+             return
+
+        if item_id in self.downloads_window.active_downloads:
+            print(f"[App] Skipping download: {item_title} (Already in queue)")
             return
 
         quality = self.quality_var.get()
-        threading.Thread(target=self._download_worker, args=(track_id, filename, quality)).start()
+        threading.Thread(target=self._download_worker, args=(item_id, item_title, quality)).start()
+
+    def _download_album_worker(self, album_id, album_title):
+        print(f"[App] Fetching album {album_id}...")
+        try:
+            album_data = self.api.get_album(album_id)
+            items = album_data.get("items", [])
+            
+            if not items:
+                print("[App] Album empty or failed to load items.")
+                return
+
+            # Create folder
+            safe_album = "".join([c for c in album_title if c.isalpha() or c.isdigit() or c in " .-_()"]).strip()
+            album_dir = os.path.join(self.download_path, safe_album)
+            if not os.path.exists(album_dir):
+                os.makedirs(album_dir)
+                
+            print(f"[App] Starting album download: {album_title} ({len(items)} tracks)")
+            
+            quality = self.quality_var.get()
+            for item_obj in items:
+                # Handle wrapped items
+                item = item_obj.get("item", item_obj)
+                
+                t_id = item.get("id")
+                title = item.get("title")
+                artist = item.get("artist", {}).get("name")
+                
+                if not artist and "artists" in item:
+                     artist = ", ".join([a.get("name", "") for a in item["artists"]])
+                     
+                display = f"{artist} - {title}"
+                
+                if t_id and t_id not in self.downloads_window.active_downloads:
+                    # Download in parallel
+                    threading.Thread(target=self._download_worker, args=(t_id, display, quality, album_dir)).start()
+        except Exception as e:
+            print(f"Album Queue Error: {e}")
 
     def on_player_download(self, track_info):
         name = f"{track_info['artist']} - {track_info['title']}"
         self.start_download(track_info['id'], name)
 
-    def _download_worker(self, track_id, filename, quality):
+    def _download_worker(self, track_id, filename, quality, output_dir=None):
         print(f"[App] Downloading {filename}...")
+        target_dir = output_dir if output_dir else self.download_path
         
         # Add to Download UI
         self.after(0, lambda: self.downloads_window.add_download(track_id, filename))
@@ -221,7 +281,7 @@ class TidalApp(ctk.CTk):
                 curr_url = f"https://resources.tidal.com/images/{uuid}/1280x1280.jpg"
                 r = requests.get(curr_url)
                 if r.status_code == 200:
-                    cover_path = f"cover_{track_id}.jpg"
+                    cover_path = os.path.join(target_dir, f"cover_{track_id}.jpg")
                     with open(cover_path, "wb") as f: f.write(r.content)
             except: pass
 
@@ -231,11 +291,12 @@ class TidalApp(ctk.CTk):
         if not final_url:
             print("[App] Download failed: No URL")
             self.after(0, lambda: self.downloads_window.finish_download(track_id, False, "No URL"))
+            if cover_path and os.path.exists(cover_path): os.remove(cover_path)
             return
             
         safe_name = "".join([c for c in filename if c.isalpha() or c.isdigit() or c in " .-_()"]).strip()
         ext = ".flac" if quality in ["HI_RES_LOSSLESS", "LOSSLESS"] else ".m4a"
-        output_path = os.path.join(self.download_path, f"{safe_name}{ext}")
+        output_path = os.path.join(target_dir, f"{safe_name}{ext}")
         
         def progress_cb(p):
             self.after(0, lambda: self.downloads_window.update_download(track_id, p))

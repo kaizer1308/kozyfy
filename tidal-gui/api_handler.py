@@ -41,6 +41,31 @@ class TidalApiHandler:
         except Exception as e:
             return {"error": str(e)}
 
+    def search_albums(self, query):
+        """
+        Search for albums using the /search/ endpoint with param 'al'.
+        Returns a list of dicts (album info).
+        """
+        try:
+            url = f"{self.base_url}/search/"
+            params = {"al": query}
+            headers = {"User-Agent": "TidalGui/1.0"}
+            print(f"Searching Albums: {url} with {params}")
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Tidal response for top-hits with types=ALBUMS usually has "albums": { "items": ... }
+            if "albums" in data and "items" in data["albums"]:
+                return data["albums"]["items"]
+            # Sometimes wrapped in "data"
+            elif "data" in data and "albums" in data["data"] and "items" in data["data"]["albums"]:
+                return data["data"]["albums"]["items"]
+            
+            return []
+        except Exception as e:
+            return {"error": str(e)}
+
     def get_track_details(self, track_id):
         """Fetch full metadata for a track."""
         try:
@@ -51,6 +76,24 @@ class TidalApiHandler:
             return response.json().get("data", {})
         except Exception as e:
             print(f"Error fetching details: {e}")
+            return {}
+
+    def get_album(self, album_id):
+        """
+        Fetch album details including tracks.
+        """
+        try:
+            url = f"{self.base_url}/album/"
+            params = {"id": album_id}
+            headers = {"User-Agent": "TidalGui/1.0"}
+            print(f"Fetching Album: {url} with {params}")
+            response = requests.get(url, params=params, headers=headers, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+            # hifi-api returns { "data": { ...album_info, "items": [...] } }
+            return data.get("data", {})
+        except Exception as e:
+            print(f"Error fetching album: {e}")
             return {}
 
     def get_stream_url(self, track_id, quality="HI_RES_LOSSLESS"):

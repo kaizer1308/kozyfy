@@ -20,17 +20,18 @@ class SearchResultsView(ctk.CTkScrollableFrame):
             self._create_row(item)
 
     def _create_row(self, item):
-        track_id = item.get("id")
+        item_type = item.get("_type", "TRACK")
+        item_id = item.get("id")
         title = item.get("title", "Unknown")
-        artist = item.get("artist", {}).get("name", "Unknown Artist")
-        album = item.get("album", {}).get("title", "Unknown Album")
-        duration = item.get("duration", 0)
         
-        # Format duration
-        mins = int(duration / 60)
-        secs = int(duration % 60)
-        time_str = f"{mins}:{secs:02d}"
-
+        # Artist handling
+        artist = item.get("artist", {}).get("name")
+        if not artist and "artists" in item:
+            # Join multiple artists
+            artist = ", ".join([a.get("name", "") for a in item["artists"]])
+        if not artist:
+            artist = "Unknown Artist"
+        
         # Parse Quality
         quality = item.get("audioQuality", "UNKNOWN")
         tags = item.get("mediaMetadata", {}).get("tags", [])
@@ -46,6 +47,13 @@ class SearchResultsView(ctk.CTkScrollableFrame):
              display_quality = "Hi-Res"
         elif quality == "LOSSLESS":
              display_quality = "Lossless"
+             
+        # Quality Color
+        q_color = "gray"
+        if "Hi-Res" in display_quality or "Master" in display_quality:
+            q_color = "#FFA500" # Gold/Orange
+        elif "Lossless" in display_quality:
+            q_color = "#00BFFF" # Blue
 
         row_frame = ctk.CTkFrame(self)
         row_frame.pack(fill="x", pady=2)
@@ -57,26 +65,44 @@ class SearchResultsView(ctk.CTkScrollableFrame):
         title_lbl = ctk.CTkLabel(info_frame, text=title, font=("Arial", 13, "bold"), anchor="w")
         title_lbl.pack(fill="x")
         
-        sub_text = f"{artist} • {album} • {time_str}"
-        sub_lbl = ctk.CTkLabel(info_frame, text=sub_text, font=("Arial", 11), text_color="gray", anchor="w")
-        sub_lbl.pack(fill="x")
-        
-        # Quality Label
-        q_color = "gray"
-        if "Hi-Res" in display_quality or "Master" in display_quality:
-            q_color = "#FFA500" # Gold/Orange
-        elif "Lossless" in display_quality:
-            q_color = "#00BFFF" # Blue
+        if item_type == "ALBUM":
+            release_date = item.get("releaseDate", "")
+            tracks_count = item.get("numberOfTracks", 0)
+            sub_text = f"Album • {artist} • {tracks_count} Tracks • {release_date}"
             
-        qual_lbl = ctk.CTkLabel(row_frame, text=display_quality, text_color=q_color, font=("Arial", 11, "bold"), width=100, anchor="e")
-        qual_lbl.pack(side="right", padx=(5, 10))
+            sub_lbl = ctk.CTkLabel(info_frame, text=sub_text, font=("Arial", 11), text_color="gray", anchor="w")
+            sub_lbl.pack(fill="x")
+            
+            qual_lbl = ctk.CTkLabel(row_frame, text=display_quality, text_color=q_color, font=("Arial", 11, "bold"), width=100, anchor="e")
+            qual_lbl.pack(side="right", padx=(5, 10))
 
-        # Download Button
-        dl_btn = ctk.CTkButton(row_frame, text="Download", width=80, height=28,
-                               command=lambda: self.on_download(track_id, f"{artist} - {title}"))
-        dl_btn.pack(side="right", padx=10, pady=5)
+            # Download Button (Album)
+            dl_btn = ctk.CTkButton(row_frame, text="Download", width=80, height=28,
+                                   command=lambda: self.on_download(item_id, f"{artist} - {title}", "ALBUM"))
+            dl_btn.pack(side="right", padx=10, pady=5)
+            
+        else: # TRACK
+            album = item.get("album", {}).get("title", "Unknown Album")
+            duration = item.get("duration", 0)
+            
+            # Format duration
+            mins = int(duration / 60)
+            secs = int(duration % 60)
+            time_str = f"{mins}:{secs:02d}"
 
-        # Play Button
-        play_btn = ctk.CTkButton(row_frame, text="Play", width=60, height=28, fg_color="green",
-                                 command=lambda: self.on_play(track_id))
-        play_btn.pack(side="right", padx=5)
+            sub_text = f"{artist} • {album} • {time_str}"
+            sub_lbl = ctk.CTkLabel(info_frame, text=sub_text, font=("Arial", 11), text_color="gray", anchor="w")
+            sub_lbl.pack(fill="x")
+            
+            qual_lbl = ctk.CTkLabel(row_frame, text=display_quality, text_color=q_color, font=("Arial", 11, "bold"), width=100, anchor="e")
+            qual_lbl.pack(side="right", padx=(5, 10))
+
+            # Download Button
+            dl_btn = ctk.CTkButton(row_frame, text="Download", width=80, height=28,
+                                   command=lambda: self.on_download(item_id, f"{artist} - {title}", "TRACK"))
+            dl_btn.pack(side="right", padx=10, pady=5)
+
+            # Play Button
+            play_btn = ctk.CTkButton(row_frame, text="Play", width=60, height=28, fg_color="green",
+                                     command=lambda: self.on_play(item_id))
+            play_btn.pack(side="right", padx=5)
