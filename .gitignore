@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# OS Generated
+.DS_Store
+Thumbs.db
+
+# Project Specific (Downloads & Temp)
+*.flac
+*.m4a
+*.mp3
+*.mp4
+*.mkv
+cover_*.jpg
+temp_*.mpd
+temp_*.m3u8
+temp_*.txt
+
+# Auth & Secrets
+tidal_auth/
+token.json
+credentials.json
+auth.json
+
+# Logs
+*.log
+
+#hifi-api
+hifi-api
