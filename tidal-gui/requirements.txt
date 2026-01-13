@@ -1,3 +1,20 @@
-customtkinter
-requests
-ffmpeg-python
+# GUI Framework
+customtkinter>=5.2.0
+
+# HTTP Client
+requests>=2.28.0
+
+# Image Processing
+Pillow>=9.0.0
+
+# VLC bindings for playback
+python-vlc>=3.0.0
+
+# SSL Certificates (for bundled app)
+certifi>=2023.0.0
+
+# PyInstaller for building
+pyinstaller>=5.13.0
+
+# FFmpeg interface (optional, for advanced features)
+ffmpeg-python>=0.2.0

@@ -1,18 +1,34 @@
-import customtkinter as ctk
-from tkinter import filedialog
-import threading
+import sys
 import os
+
+# Fix for bundled app - ensure proper import paths
+if getattr(sys, 'frozen', False):
+    # Running as compiled exe
+    os.chdir(os.path.dirname(sys.executable))
+    # Add the exe directory to path for imports
+    sys.path.insert(0, os.path.dirname(sys.executable))
+
+import customtkinter as ctk
+from tkinter import filedialog, messagebox
+import threading
 import glob
 import requests
 import base64
+import certifi
 from PIL import Image
 from io import BytesIO
+
+# Set SSL certificate path for bundled app
+os.environ['SSL_CERT_FILE'] = certifi.where()
+os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 
 from api_handler import TidalApiHandler
 from logic.playback import PlaybackManager
 from ui.player_bar import PlayerBar
 from ui.search_view import SearchResultsView
 from ui.downloads_view import DownloadsWindow
+from utils.paths import get_temp_dir, get_default_download_dir, get_config_dir
+from utils.dependencies import check_all_dependencies, get_missing_dependencies_message
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -24,10 +40,17 @@ class TidalApp(ctk.CTk):
         self.title("Kozyfy")
         self.geometry("1000x800")
         
+        # Check dependencies before proceeding
+        self._check_dependencies()
+        
         self.api = TidalApiHandler()
         self.api.set_base_url("https://triton.squid.wtf")
         
-        self.download_path = os.getcwd()
+        # Use proper default download path instead of cwd
+        self.download_path = self._load_download_path()
+        
+        # Store temp directory for temp files
+        self.temp_dir = get_temp_dir()
 
         self.playback = PlaybackManager()
         
@@ -39,6 +62,55 @@ class TidalApp(ctk.CTk):
         self._setup_layout()
         
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
+    
+    def _check_dependencies(self):
+        """Check for required dependencies and show warning if missing."""
+        deps = check_all_dependencies()
+        
+        # VLC is critical for playback
+        if not deps["vlc"]["ok"]:
+            self.after(100, lambda: messagebox.showwarning(
+                "VLC Not Found",
+                "VLC media player is not installed.\n\n"
+                "Playback features will not work.\n\n"
+                "Please install VLC (64-bit) from:\n"
+                "https://www.videolan.org/vlc/"
+            ))
+        
+        # FFmpeg is critical for downloads
+        if not deps["ffmpeg"]["ok"]:
+            self.after(200, lambda: messagebox.showwarning(
+                "FFmpeg Not Found",
+                "FFmpeg is not installed or not in PATH.\n\n"
+                "Download features will not work.\n\n"
+                "Please install FFmpeg from:\n"
+                "https://ffmpeg.org/download.html\n\n"
+                "Make sure to add FFmpeg to your system PATH."
+            ))
+    
+    def _load_download_path(self):
+        """Load saved download path or use default."""
+        config_file = os.path.join(get_config_dir(), "settings.txt")
+        try:
+            if os.path.exists(config_file):
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        if line.startswith("download_path="):
+                            path = line.strip().split("=", 1)[1]
+                            if os.path.exists(path):
+                                return path
+        except:
+            pass
+        return get_default_download_dir()
+    
+    def _save_download_path(self):
+        """Save download path to config."""
+        config_file = os.path.join(get_config_dir(), "settings.txt")
+        try:
+            with open(config_file, 'w', encoding='utf-8') as f:
+                f.write(f"download_path={self.download_path}\n")
+        except:
+            pass
 
     def _setup_layout(self):
         self.grid_columnconfigure(0, weight=1)
@@ -273,17 +345,18 @@ class TidalApp(ctk.CTk):
             "comment": "Kozydot<3You"
         }
         
-        # Cover for file tagging
+        # Cover for file tagging - save to temp dir to avoid permission issues
         cover_path = None
         if details.get("album", {}).get("cover"):
             try:
                 uuid = details["album"]["cover"].replace('-', '/')
                 curr_url = f"https://resources.tidal.com/images/{uuid}/1280x1280.jpg"
-                r = requests.get(curr_url)
+                r = requests.get(curr_url, timeout=15)
                 if r.status_code == 200:
-                    cover_path = os.path.join(target_dir, f"cover_{track_id}.jpg")
+                    cover_path = os.path.join(self.temp_dir, f"cover_{track_id}.jpg")
                     with open(cover_path, "wb") as f: f.write(r.content)
-            except: pass
+            except Exception as e:
+                print(f"[App] Cover download failed: {e}")
 
         stream_data = self.api.get_stream_url(track_id, quality=quality)
         final_url = self._resolve_stream_url(stream_data, track_id, is_playback=False)
@@ -341,11 +414,9 @@ class TidalApp(ctk.CTk):
                         final_url = bts["urls"][0]
                 else:
                     ext = ".mpd" if "dash" in mime else ".m3u8"
-                    # For playback we keep temp file, for DL api_handler handles it usually? 
-                    # Wait, api_handler.download_stream expects a URL (local file path is also a URL for ffmpeg).
-                    # My previous code saved "temp_play" or "temp_dl".
+                    # Save temp manifest file to proper temp directory
                     prefix = "play" if is_playback else "dl"
-                    temp_file = os.path.join(os.getcwd(), f"temp_{prefix}_{track_id}{ext}")
+                    temp_file = os.path.join(self.temp_dir, f"temp_{prefix}_{track_id}{ext}")
                     with open(temp_file, "w", encoding="utf-8") as f:
                         f.write(decoded)
                     final_url = temp_file
@@ -383,6 +454,7 @@ class TidalApp(ctk.CTk):
 
         def save():
             self.api.set_base_url(ent.get())
+            self._save_download_path()  # Persist download path
             win.destroy()
         
         ctk.CTkButton(win, text="Save", command=save).pack(pady=20)
@@ -392,15 +464,24 @@ class TidalApp(ctk.CTk):
         if hasattr(self, 'playback'):
             self.playback.stop()
 
-        # Cleanup temp files
+        # Cleanup temp files from proper temp directory
         print("[Cleanup] Cleaning up temporary files...")
-        temp_files = glob.glob("temp_*.mpd") + glob.glob("temp_*.m3u8") + glob.glob("cover_*.jpg")
-        for f in temp_files:
-            try:
-                os.remove(f)
-                print(f"[Cleanup] Removed {f}")
-            except Exception as e:
-                print(f"[Cleanup] Failed to remove {f}: {e}")
+        try:
+            temp_dir = getattr(self, 'temp_dir', get_temp_dir())
+            temp_patterns = [
+                os.path.join(temp_dir, "temp_*.mpd"),
+                os.path.join(temp_dir, "temp_*.m3u8"),
+                os.path.join(temp_dir, "cover_*.jpg"),
+            ]
+            for pattern in temp_patterns:
+                for f in glob.glob(pattern):
+                    try:
+                        os.remove(f)
+                        print(f"[Cleanup] Removed {f}")
+                    except Exception as e:
+                        print(f"[Cleanup] Failed to remove {f}: {e}")
+        except Exception as e:
+            print(f"[Cleanup] Error during cleanup: {e}")
                 
         self.destroy()
         os._exit(0)

@@ -4,6 +4,7 @@ import threading
 import json
 import os
 import re
+import sys
 
 class TidalApiHandler:
     def __init__(self, base_url="https://tidal-api.binimum.org"):
@@ -138,14 +139,28 @@ class TidalApiHandler:
         if not stream_url:
             return False, "No stream URL provided"
 
-        # Check for ffmpeg
+        # Get FFmpeg path using dependency checker
         try:
-            subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-        except (FileNotFoundError, subprocess.CalledProcessError):
-            return False, "FFmpeg is not installed or not in PATH."
+            from utils.dependencies import get_ffmpeg_path
+            ffmpeg_path = get_ffmpeg_path()
+        except ImportError:
+            ffmpeg_path = None
+        
+        if not ffmpeg_path:
+            # Fallback to checking PATH directly
+            import shutil
+            ffmpeg_path = shutil.which("ffmpeg")
+        
+        if not ffmpeg_path:
+            return False, "FFmpeg is not installed or not in PATH. Please install FFmpeg."
+
+        # Windows subprocess creation flags to hide console window
+        creationflags = 0
+        if sys.platform == "win32":
+            creationflags = subprocess.CREATE_NO_WINDOW
 
         cmd = [
-            "ffmpeg",
+            ffmpeg_path,
             "-protocol_whitelist", "file,http,https,tcp,tls,crypto,data",
             "-i", stream_url
         ]
@@ -180,8 +195,17 @@ class TidalApiHandler:
                 update_callback(0) # Start with 0%
             
             # Use Popen to capture stderr in real-time
-            # connect stdout to DEVNULL to avoid buffer filling up since we only read stderr
-            process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, encoding='utf-8')
+            # Use CREATE_NO_WINDOW on Windows to hide console
+            # Use errors='replace' for encoding to handle non-UTF8 output
+            process = subprocess.Popen(
+                cmd, 
+                stdout=subprocess.DEVNULL, 
+                stderr=subprocess.PIPE, 
+                text=True, 
+                encoding='utf-8',
+                errors='replace',
+                creationflags=creationflags
+            )
             
             time_pattern = re.compile(r"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})")
             
