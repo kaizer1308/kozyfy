@@ -2,16 +2,25 @@ import customtkinter as ctk
 from .icons import create_icon
 
 class PlayerBar(ctk.CTkFrame):
-    def __init__(self, master, playback_manager, on_download_click, **kwargs):
+    def __init__(self, master, playback_manager, on_download_click, on_lyrics_click=None, **kwargs):
         super().__init__(master, **kwargs)
         self.playback_manager = playback_manager
         self.on_download_click = on_download_click
+        self.on_lyrics_click = on_lyrics_click
         
         self.configure(fg_color="#1a1a1a", height=100, corner_radius=10)
         self.grid_columnconfigure(1, weight=1)
 
         self._create_ui()
+        
+        # Smooth progress tracking
+        self._last_progress = 0
+        self._target_progress = 0
+        self._last_time_ms = 0
+        self._track_length_ms = 0
+        
         self._start_updater()
+        self._start_smooth_slider()
 
     def _create_ui(self):
         # -- Left: Track Info & Art --
@@ -71,6 +80,22 @@ class PlayerBar(ctk.CTkFrame):
         self.extras_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.extras_frame.grid(row=0, column=2, padx=20, pady=10, sticky="e")
         
+        # Lyrics Button
+        self.icon_lyrics = create_icon("lyrics", size=(20, 20))
+        self.btn_lyrics = ctk.CTkButton(
+            self.extras_frame, 
+            text="", 
+            image=self.icon_lyrics,
+            width=36, 
+            height=36, 
+            fg_color="transparent",
+            hover_color="#333333",
+            border_width=1,
+            state="disabled", 
+            command=self._on_lyrics_click
+        )
+        self.btn_lyrics.pack(side="left", padx=5)
+        
         self.btn_dl_current = ctk.CTkButton(self.extras_frame, text="Download", width=80, height=24, state="disabled", command=self.download_current_track)
         self.btn_dl_current.pack(side="left", padx=10)
         
@@ -98,6 +123,11 @@ class PlayerBar(ctk.CTkFrame):
         if self.playback_manager.current_track_info:
             self.on_download_click(self.playback_manager.current_track_info)
 
+    def _on_lyrics_click(self):
+        """Handle lyrics button click."""
+        if self.on_lyrics_click:
+            self.on_lyrics_click()
+
     def update_track_info(self, track_info, cover_image):
         self.lbl_title.configure(text=track_info["title"])
         self.lbl_artist.configure(text=track_info["artist"])
@@ -108,9 +138,11 @@ class PlayerBar(ctk.CTkFrame):
             self.art_label.configure(image=None, text="🎵")
             
         self.btn_dl_current.configure(state="normal")
+        self.btn_lyrics.configure(state="normal")
         self.btn_play.configure(image=self.icon_pause)
 
     def _start_updater(self):
+        """Fetch actual position from VLC at lower frequency."""
         def fmt_time(ms):
             s = ms // 1000
             m = s // 60
@@ -119,8 +151,44 @@ class PlayerBar(ctk.CTkFrame):
 
         curr, length, prog = self.playback_manager.get_progress()
         if length > 0:
-            self.slider_progress.set(prog)
+            self._target_progress = prog
+            self._last_time_ms = curr
+            self._track_length_ms = length
             self.lbl_current_time.configure(text=fmt_time(curr))
             self.lbl_total_time.configure(text=fmt_time(length))
         
-        self.after(500, self._start_updater)
+        # Update actual position every 200ms (VLC polling)
+        self.after(200, self._start_updater)
+    
+    def _start_smooth_slider(self):
+        """Interpolate slider position at 60fps for smooth animation."""
+        if self._track_length_ms > 0 and self.playback_manager.is_playing:
+            # Interpolate: estimate current position based on time elapsed
+            # This creates smooth motion between VLC position updates
+            
+            # Smoothly lerp towards target
+            diff = self._target_progress - self._last_progress
+            
+            # Use easing for smoother feel (lerp factor)
+            if abs(diff) > 0.01:
+                # Larger jump - snap faster (seeking)
+                self._last_progress += diff * 0.3
+            else:
+                # Normal playback - smooth interpolation
+                # Add estimated progress based on frame time (~16ms)
+                estimated_advance = 16 / self._track_length_ms
+                self._last_progress += estimated_advance
+                
+                # Also lerp towards actual target to stay synced
+                self._last_progress += (self._target_progress - self._last_progress) * 0.1
+            
+            # Clamp to valid range
+            self._last_progress = max(0, min(1, self._last_progress))
+            self.slider_progress.set(self._last_progress)
+        elif self._track_length_ms > 0:
+            # Paused - just sync to target
+            self._last_progress = self._target_progress
+            self.slider_progress.set(self._last_progress)
+        
+        # 60fps = ~16ms interval
+        self.after(16, self._start_smooth_slider)

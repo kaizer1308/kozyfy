@@ -27,6 +27,7 @@ from logic.playback import PlaybackManager
 from ui.player_bar import PlayerBar
 from ui.search_view import SearchResultsView
 from ui.downloads_view import DownloadsWindow
+from ui.lyrics_view import LyricsWindow
 from utils.paths import get_temp_dir, get_default_download_dir, get_config_dir
 from utils.dependencies import check_all_dependencies, get_missing_dependencies_message
 
@@ -56,6 +57,9 @@ class TidalApp(ctk.CTk):
         
         self.downloads_window = DownloadsWindow(self)
         
+        # Create lyrics window with playback progress callback
+        self.lyrics_window = LyricsWindow(self, self.playback.get_progress)
+        
         # State
         self.current_results = []
         
@@ -65,21 +69,12 @@ class TidalApp(ctk.CTk):
     
     def _check_dependencies(self):
         """Check for required dependencies and show warning if missing."""
+        # Check FFmpeg first (doesn't cause DLL errors)
         deps = check_all_dependencies()
-        
-        # VLC is critical for playback
-        if not deps["vlc"]["ok"]:
-            self.after(100, lambda: messagebox.showwarning(
-                "VLC Not Found",
-                "VLC media player is not installed.\n\n"
-                "Playback features will not work.\n\n"
-                "Please install VLC (64-bit) from:\n"
-                "https://www.videolan.org/vlc/"
-            ))
         
         # FFmpeg is critical for downloads
         if not deps["ffmpeg"]["ok"]:
-            self.after(200, lambda: messagebox.showwarning(
+            self.after(100, lambda: messagebox.showwarning(
                 "FFmpeg Not Found",
                 "FFmpeg is not installed or not in PATH.\n\n"
                 "Download features will not work.\n\n"
@@ -87,6 +82,9 @@ class TidalApp(ctk.CTk):
                 "https://ffmpeg.org/download.html\n\n"
                 "Make sure to add FFmpeg to your system PATH."
             ))
+        
+        # VLC check is now done lazily when playback is attempted
+        # to avoid DLL errors on startup
     
     def _load_download_path(self):
         """Load saved download path or use default."""
@@ -170,8 +168,17 @@ class TidalApp(ctk.CTk):
         self.results_view.grid(row=2, column=0, padx=10, pady=5, sticky="nsew")
 
     def _create_player_bar(self):
-        self.player_bar = PlayerBar(self, self.playback, on_download_click=self.on_player_download)
+        self.player_bar = PlayerBar(
+            self, 
+            self.playback, 
+            on_download_click=self.on_player_download,
+            on_lyrics_click=self.toggle_lyrics_window
+        )
         self.player_bar.grid(row=3, column=0, padx=10, pady=10, sticky="ew")
+
+    def toggle_lyrics_window(self):
+        """Toggle the lyrics window visibility."""
+        self.lyrics_window.toggle_window()
 
     # --- Actions ---
 
@@ -263,11 +270,49 @@ class TidalApp(ctk.CTk):
             self.after(0, lambda: self._start_vlc(final_url, track_info, cover_img))
         else:
             print("[App] Failed to resolve stream for playback")
+            self.after(0, lambda: messagebox.showerror("Playback Error", "Failed to get stream URL for this track."))
 
     def _start_vlc(self, url, track_info, cover_img):
-        self.playback.play(url, track_info)
-        self.player_bar.update_track_info(track_info, cover_img)
-        self.current_cover_ref = cover_img # Prevent GC
+        # Check VLC availability before attempting playback
+        if not self.playback.is_vlc_available():
+            error_msg = self.playback.get_vlc_error() or "VLC is not available"
+            messagebox.showerror(
+                "Playback Error",
+                f"{error_msg}\n\n"
+                "Please install/update VLC Media Player (64-bit):\n"
+                "https://www.videolan.org/vlc/\n\n"
+                "After installing, restart Kozyfy."
+            )
+            return
+        
+        if self.playback.play(url, track_info):
+            self.player_bar.update_track_info(track_info, cover_img)
+            self.current_cover_ref = cover_img # Prevent GC
+            
+            # Fetch and load lyrics for the new track
+            self._load_lyrics_for_track(track_info)
+        else:
+            messagebox.showerror("Playback Error", "Failed to start playback. Please check VLC installation.")
+
+    def _load_lyrics_for_track(self, track_info):
+        """Fetch and load lyrics for the current track."""
+        # Update lyrics window with track info immediately
+        self.lyrics_window.set_track_info(track_info)
+        
+        # Fetch lyrics in background thread
+        threading.Thread(
+            target=self._fetch_lyrics_worker, 
+            args=(track_info["id"],),
+            daemon=True
+        ).start()
+    
+    def _fetch_lyrics_worker(self, track_id):
+        """Worker thread to fetch lyrics from API."""
+        print(f"[App] Fetching lyrics for track {track_id}...")
+        lyrics_data = self.api.get_lyrics(track_id)
+        
+        # Load lyrics in main thread
+        self.after(0, lambda: self.lyrics_window.load_lyrics(lyrics_data))
 
     # --- Download Logic (Controller) ---
     def start_download(self, item_id, item_title, item_type="TRACK"):

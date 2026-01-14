@@ -90,6 +90,9 @@ def get_vlc_instance():
     """
     global _vlc_path
     
+    # Suppress VLC error dialogs
+    os.environ['VLC_VERBOSE'] = '-1'
+    
     # Try to set VLC plugin path before import
     vlc_paths = [
         r"C:\Program Files\VideoLAN\VLC",
@@ -98,20 +101,22 @@ def get_vlc_instance():
         os.path.join(os.environ.get("PROGRAMFILES(X86)", ""), "VideoLAN", "VLC"),
     ]
     
-    # Find VLC installation
+    # Find VLC installation - verify libvlc.dll exists
     for path in vlc_paths:
         if path and os.path.exists(path):
-            _vlc_path = path
-            plugins_path = os.path.join(path, "plugins")
-            if os.path.exists(plugins_path):
-                os.environ["VLC_PLUGIN_PATH"] = plugins_path
-            # Add VLC to DLL search path
-            if hasattr(os, 'add_dll_directory'):
-                try:
-                    os.add_dll_directory(path)
-                except:
-                    pass
-            break
+            libvlc = os.path.join(path, "libvlc.dll")
+            if os.path.exists(libvlc):
+                _vlc_path = path
+                plugins_path = os.path.join(path, "plugins")
+                if os.path.exists(plugins_path):
+                    os.environ["VLC_PLUGIN_PATH"] = plugins_path
+                # Add VLC to DLL search path
+                if hasattr(os, 'add_dll_directory'):
+                    try:
+                        os.add_dll_directory(path)
+                    except:
+                        pass
+                break
     
     # Also try adding to PATH
     if _vlc_path:
@@ -121,14 +126,17 @@ def get_vlc_instance():
     
     try:
         import vlc
-        # Test that we can create an instance
-        instance = vlc.Instance()
+        # Test that we can create an instance with safe options
+        instance = vlc.Instance('--quiet', '--no-plugins-cache')
         if instance:
             return vlc, None
         else:
             return None, "VLC instance creation failed"
     except OSError as e:
-        if "cannot load library" in str(e).lower() or "not found" in str(e).lower():
+        error_str = str(e).lower()
+        if "entry point" in error_str or "procedure" in error_str:
+            return None, "VLC version mismatch. Please update VLC to the latest 64-bit version."
+        elif "cannot load" in error_str or "not found" in error_str:
             return None, "VLC is not installed. Please install VLC media player (64-bit recommended)."
         return None, f"VLC error: {str(e)}"
     except Exception as e:
@@ -138,11 +146,23 @@ def check_vlc():
     """
     Check if VLC is available and working.
     Returns (success: bool, error_message: str or None)
+    NOTE: This does a light check without loading VLC to avoid DLL errors.
     """
-    vlc_module, error = get_vlc_instance()
-    if vlc_module:
-        return True, None
-    return False, error
+    # Just check if VLC is installed, don't try to load it
+    vlc_paths = [
+        r"C:\Program Files\VideoLAN\VLC",
+        r"C:\Program Files (x86)\VideoLAN\VLC",
+        os.path.join(os.environ.get("PROGRAMFILES", ""), "VideoLAN", "VLC"),
+        os.path.join(os.environ.get("PROGRAMFILES(X86)", ""), "VideoLAN", "VLC"),
+    ]
+    
+    for path in vlc_paths:
+        if path and os.path.exists(path):
+            libvlc = os.path.join(path, "libvlc.dll")
+            if os.path.exists(libvlc):
+                return True, None
+    
+    return False, "VLC Media Player not found. Please install VLC (64-bit)."
 
 def check_all_dependencies():
     """

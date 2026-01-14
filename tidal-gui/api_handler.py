@@ -97,6 +97,27 @@ class TidalApiHandler:
             print(f"Error fetching album: {e}")
             return {}
 
+    def get_lyrics(self, track_id):
+        """
+        Fetch lyrics for a track ID using /lyrics/.
+        Returns synced lyrics if available.
+        """
+        try:
+            url = f"{self.base_url}/lyrics/"
+            params = {"id": track_id}
+            headers = {"User-Agent": "TidalGui/1.0"}
+            print(f"Fetching Lyrics: {url} with {params}")
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            
+            if response.status_code == 404:
+                return {"error": "Lyrics not available for this track"}
+            
+            response.raise_for_status()
+            data = response.json()
+            return data.get("lyrics", {})
+        except Exception as e:
+            return {"error": str(e)}
+
     def get_stream_url(self, track_id, quality="HI_RES_LOSSLESS"):
         """
         Fetch playback info for a track ID using /track/.
