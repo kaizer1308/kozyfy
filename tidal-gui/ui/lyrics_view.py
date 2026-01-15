@@ -91,22 +91,40 @@ class LyricsWindow(ctk.CTkToplevel):
         self.header_frame = ctk.CTkFrame(self, fg_color="#1a1a1a", height=80)
         self.header_frame.pack(fill="x", padx=10, pady=10)
         self.header_frame.pack_propagate(False)
+
+        self.header_content = ctk.CTkFrame(self.header_frame, fg_color="transparent")
+        self.header_content.place(relx=0.5, rely=0.5, anchor="center")
+
+        self.cover_label = ctk.CTkLabel(
+            self.header_content,
+            text="No Art",
+            width=60,
+            height=60,
+            fg_color="#2a2a2a",
+            corner_radius=6
+        )
+        self.cover_label.pack(side="left", padx=(0, 10))
+
+        self.header_text = ctk.CTkFrame(self.header_content, fg_color="transparent")
+        self.header_text.pack(side="left", fill="both", expand=True)
         
         self.title_label = ctk.CTkLabel(
-            self.header_frame,
+            self.header_text,
             text="No Track Playing",
             font=("Arial", 16, "bold"),
-            text_color="white"
+            text_color="white",
+            anchor="w"
         )
-        self.title_label.pack(pady=(15, 5))
+        self.title_label.pack(anchor="w")
         
         self.artist_label = ctk.CTkLabel(
-            self.header_frame,
+            self.header_text,
             text="",
             font=("Arial", 12),
-            text_color="#888888"
+            text_color="#888888",
+            anchor="w"
         )
-        self.artist_label.pack()
+        self.artist_label.pack(anchor="w")
         
         # Scrollable lyrics container
         self.lyrics_container = ctk.CTkScrollableFrame(
@@ -188,11 +206,16 @@ class LyricsWindow(ctk.CTkToplevel):
         else:
             self.show_window()
     
-    def set_track_info(self, track_info: dict):
+    def set_track_info(self, track_info: dict, cover_image=None):
         """Update track info in header."""
         self.track_info = track_info
         self.title_label.configure(text=track_info.get("title", "Unknown"))
         self.artist_label.configure(text=track_info.get("artist", ""))
+        if cover_image:
+            self.cover_label.configure(image=cover_image, text="")
+            self.cover_label.image = cover_image
+        else:
+            self.cover_label.configure(image=None, text="No Art")
     
     def load_lyrics(self, lyrics_data: dict):
         """Load and parse lyrics data."""
@@ -485,5 +508,6 @@ class LyricsWindow(ctk.CTkToplevel):
         self._clear_lyrics()
         self.title_label.configure(text="No Track Playing")
         self.artist_label.configure(text="")
+        self.cover_label.configure(image=None, text="No Art")
         self.sync_status.configure(text="")
         self.track_info = None

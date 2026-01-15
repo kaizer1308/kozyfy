@@ -43,6 +43,9 @@ class PlayerBar(ctk.CTkFrame):
         self.lbl_artist = ctk.CTkLabel(self.text_frame_player, text="...", font=("Arial", 12), text_color="gray", anchor="w", width=200)
         self.lbl_artist.pack(anchor="w")
 
+        self.lbl_meta = ctk.CTkLabel(self.text_frame_player, text="", font=("Arial", 10), text_color="#777777", anchor="w", width=240)
+        self.lbl_meta.pack(anchor="w")
+
         # -- Center: Controls & Progress --
         self.controls_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.controls_frame.grid(row=0, column=1, padx=10, pady=5)
@@ -135,6 +138,15 @@ class PlayerBar(ctk.CTkFrame):
     def update_track_info(self, track_info, cover_image):
         self.lbl_title.configure(text=track_info["title"])
         self.lbl_artist.configure(text=track_info["artist"])
+
+        meta_parts = []
+        album = track_info.get("album")
+        if album:
+            meta_parts.append(album)
+        quality_detail = track_info.get("quality_detail")
+        if quality_detail:
+            meta_parts.append(quality_detail)
+        self.lbl_meta.configure(text=" • ".join(meta_parts))
         
         if cover_image:
             self.art_label.configure(image=cover_image, text="")

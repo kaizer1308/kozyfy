@@ -57,6 +57,7 @@ class SearchResultsView(ctk.CTkScrollableFrame):
         # Parse Quality
         quality = item.get("audioQuality", "UNKNOWN")
         tags = item.get("mediaMetadata", {}).get("tags", [])
+        audio_modes = item.get("audioModes") or []
         
         display_quality = quality
         if "HIRES_LOSSLESS" in tags:
@@ -69,6 +70,20 @@ class SearchResultsView(ctk.CTkScrollableFrame):
              display_quality = "Hi-Res"
         elif quality == "LOSSLESS":
              display_quality = "Lossless"
+
+        quality_extras = []
+        if "MQA" in tags:
+            quality_extras.append("MQA")
+        if "DOLBY_ATMOS" in tags:
+            quality_extras.append("Dolby Atmos")
+        if "SONY_360RA" in tags:
+            quality_extras.append("360 Reality Audio")
+        if audio_modes:
+            quality_extras.append("/".join(audio_modes).title())
+
+        quality_parts = [display_quality] if display_quality else []
+        quality_parts.extend(quality_extras)
+        quality_detail = " • ".join(quality_parts) if quality_parts else "Unknown"
              
         # Quality Color
         q_color = "gray"
@@ -95,7 +110,16 @@ class SearchResultsView(ctk.CTkScrollableFrame):
             sub_lbl = ctk.CTkLabel(info_frame, text=sub_text, font=("Arial", 11), text_color="gray", anchor="w")
             sub_lbl.pack(fill="x")
             
-            qual_lbl = ctk.CTkLabel(row_frame, text=display_quality, text_color=q_color, font=("Arial", 11, "bold"), width=100, anchor="e")
+            qual_lbl = ctk.CTkLabel(
+                row_frame,
+                text=quality_detail,
+                text_color=q_color,
+                font=("Arial", 11, "bold"),
+                width=150,
+                anchor="e",
+                justify="right",
+                wraplength=150
+            )
             qual_lbl.pack(side="right", padx=(5, 10))
 
             # Download Button (Album)
@@ -116,7 +140,16 @@ class SearchResultsView(ctk.CTkScrollableFrame):
             sub_lbl = ctk.CTkLabel(info_frame, text=sub_text, font=("Arial", 11), text_color="gray", anchor="w")
             sub_lbl.pack(fill="x")
             
-            qual_lbl = ctk.CTkLabel(row_frame, text=display_quality, text_color=q_color, font=("Arial", 11, "bold"), width=100, anchor="e")
+            qual_lbl = ctk.CTkLabel(
+                row_frame,
+                text=quality_detail,
+                text_color=q_color,
+                font=("Arial", 11, "bold"),
+                width=150,
+                anchor="e",
+                justify="right",
+                wraplength=150
+            )
             qual_lbl.pack(side="right", padx=(5, 10))
 
             # Download Button

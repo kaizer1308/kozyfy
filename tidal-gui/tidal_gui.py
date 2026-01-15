@@ -264,6 +264,9 @@ class TidalApp(ctk.CTk):
         
         # 3. Fetch Stream
         stream_data = self.api.get_stream_url(track_id, quality=quality)
+        quality_detail = self._build_audio_metadata(details, stream_data)
+        if quality_detail:
+            track_info["quality_detail"] = quality_detail
         final_url = self._resolve_stream_url(stream_data, track_id, is_playback=True)
         
         if final_url:
@@ -290,14 +293,14 @@ class TidalApp(ctk.CTk):
             self.current_cover_ref = cover_img # Prevent GC
             
             # Fetch and load lyrics for the new track
-            self._load_lyrics_for_track(track_info)
+            self._load_lyrics_for_track(track_info, cover_img)
         else:
             messagebox.showerror("Playback Error", "Failed to start playback. Please check VLC installation.")
 
-    def _load_lyrics_for_track(self, track_info):
+    def _load_lyrics_for_track(self, track_info, cover_img=None):
         """Fetch and load lyrics for the current track."""
         # Update lyrics window with track info immediately
-        self.lyrics_window.set_track_info(track_info)
+        self.lyrics_window.set_track_info(track_info, cover_img)
         
         # Fetch lyrics in background thread
         threading.Thread(
@@ -440,6 +443,72 @@ class TidalApp(ctk.CTk):
         except Exception as e:
             print(f"Cover Load Error: {e}")
         return None
+
+    def _format_quality_label(self, audio_quality, tags):
+        if not audio_quality:
+            audio_quality = ""
+        if "HIRES_LOSSLESS" in tags or audio_quality == "HI_RES_LOSSLESS":
+            return "Hi-Res Lossless"
+        if audio_quality == "LOSSLESS":
+            return "Lossless"
+        if audio_quality == "HI_RES":
+            return "Hi-Res"
+        if audio_quality == "HIGH":
+            return "High"
+        if audio_quality == "LOW":
+            return "Low"
+        return audio_quality.replace("_", " ").title() if audio_quality else ""
+
+    def _build_audio_metadata(self, details, stream_data):
+        if not isinstance(details, dict) or not isinstance(stream_data, dict):
+            return ""
+
+        if "data" in stream_data and isinstance(stream_data["data"], dict):
+            stream_data = stream_data["data"]
+
+        tags = details.get("mediaMetadata", {}).get("tags", []) or []
+        audio_quality = stream_data.get("audioQuality") or details.get("audioQuality")
+        display_quality = self._format_quality_label(audio_quality, tags)
+
+        bit_depth = stream_data.get("bitDepth")
+        sample_rate = stream_data.get("sampleRate")
+        sample_rate_label = ""
+        if sample_rate:
+            khz = sample_rate / 1000
+            if abs(khz - round(khz)) < 0.01:
+                sample_rate_label = f"{int(round(khz))}kHz"
+            else:
+                sample_rate_label = f"{khz:.1f}kHz"
+
+        audio_mode = stream_data.get("audioMode")
+        if not audio_mode:
+            audio_modes = details.get("audioModes") or []
+            if isinstance(audio_modes, list) and audio_modes:
+                audio_mode = "/".join(audio_modes)
+
+        extras = []
+        if "MQA" in tags:
+            extras.append("MQA")
+        if "DOLBY_ATMOS" in tags:
+            extras.append("Dolby Atmos")
+        if "SONY_360RA" in tags:
+            extras.append("360 Reality Audio")
+
+        meta_parts = []
+        if display_quality:
+            meta_parts.append(display_quality)
+        if bit_depth and sample_rate_label:
+            meta_parts.append(f"{bit_depth}-bit/{sample_rate_label}")
+        elif bit_depth:
+            meta_parts.append(f"{bit_depth}-bit")
+        elif sample_rate_label:
+            meta_parts.append(sample_rate_label)
+        if audio_mode:
+            meta_parts.append(audio_mode.title())
+        if extras:
+            meta_parts.extend(extras)
+
+        return " • ".join(meta_parts)
 
     def _resolve_stream_url(self, stream_data, track_id, is_playback=False):
         if "data" in stream_data and isinstance(stream_data["data"], dict):
