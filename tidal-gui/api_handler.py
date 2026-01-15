@@ -5,13 +5,48 @@ import json
 import os
 import re
 import sys
+import time
+from requests.adapters import HTTPAdapter
 
 class TidalApiHandler:
     def __init__(self, base_url="https://tidal-api.binimum.org"):
         self.base_url = base_url.rstrip("/")
+        self._session = requests.Session()
+        adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20)
+        self._session.mount("https://", adapter)
+        self._session.mount("http://", adapter)
+        self._default_headers = {"User-Agent": "TidalGui/1.0"}
+        self._cache = {}
+        self._cache_lock = threading.Lock()
+        self._cache_ttl_sec = 300
+        self.debug = False
 
     def set_base_url(self, url):
         self.base_url = url.rstrip("/")
+
+    def _request(self, path, params=None, headers=None, timeout=10):
+        url = f"{self.base_url}/{path.lstrip('/')}"
+        merged_headers = dict(self._default_headers)
+        if headers:
+            merged_headers.update(headers)
+        return self._session.get(url, params=params, headers=merged_headers, timeout=timeout)
+
+    def _get_cached(self, cache_key):
+        now = time.monotonic()
+        with self._cache_lock:
+            entry = self._cache.get(cache_key)
+            if not entry:
+                return None
+            expires_at, value = entry
+            if expires_at < now:
+                del self._cache[cache_key]
+                return None
+            return value
+
+    def _set_cached(self, cache_key, value, ttl=None):
+        expires_at = time.monotonic() + (ttl or self._cache_ttl_sec)
+        with self._cache_lock:
+            self._cache[cache_key] = (expires_at, value)
 
     def search_tracks(self, query):
         """
@@ -19,11 +54,9 @@ class TidalApiHandler:
         Returns a list of dicts (track info).
         """
         try:
-            url = f"{self.base_url}/search/"
             params = {"s": query}
-            headers = {"User-Agent": "TidalGui/1.0"}
-            print(f"Searching: {url} with {params}")
-            response = requests.get(url, params=params, headers=headers, timeout=10)
+            print(f"Searching: {self.base_url}/search/ with {params}")
+            response = self._request("search/", params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
             
@@ -48,11 +81,9 @@ class TidalApiHandler:
         Returns a list of dicts (album info).
         """
         try:
-            url = f"{self.base_url}/search/"
             params = {"al": query}
-            headers = {"User-Agent": "TidalGui/1.0"}
-            print(f"Searching Albums: {url} with {params}")
-            response = requests.get(url, params=params, headers=headers, timeout=10)
+            print(f"Searching Albums: {self.base_url}/search/ with {params}")
+            response = self._request("search/", params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
             
@@ -70,11 +101,17 @@ class TidalApiHandler:
     def get_track_details(self, track_id):
         """Fetch full metadata for a track."""
         try:
-            url = f"{self.base_url}/info/"
+            cache_key = ("track_details", track_id)
+            cached = self._get_cached(cache_key)
+            if cached is not None:
+                return cached
             params = {"id": track_id}
-            response = requests.get(url, params=params, timeout=10)
+            response = self._request("info/", params=params, timeout=10)
             response.raise_for_status()
-            return response.json().get("data", {})
+            payload = response.json().get("data", {})
+            if payload:
+                self._set_cached(cache_key, payload)
+            return payload
         except Exception as e:
             print(f"Error fetching details: {e}")
             return {}
@@ -84,15 +121,20 @@ class TidalApiHandler:
         Fetch album details including tracks.
         """
         try:
-            url = f"{self.base_url}/album/"
+            cache_key = ("album", album_id)
+            cached = self._get_cached(cache_key)
+            if cached is not None:
+                return cached
             params = {"id": album_id}
-            headers = {"User-Agent": "TidalGui/1.0"}
-            print(f"Fetching Album: {url} with {params}")
-            response = requests.get(url, params=params, headers=headers, timeout=15)
+            print(f"Fetching Album: {self.base_url}/album/ with {params}")
+            response = self._request("album/", params=params, timeout=15)
             response.raise_for_status()
             data = response.json()
             # hifi-api returns { "data": { ...album_info, "items": [...] } }
-            return data.get("data", {})
+            payload = data.get("data", {})
+            if payload:
+                self._set_cached(cache_key, payload)
+            return payload
         except Exception as e:
             print(f"Error fetching album: {e}")
             return {}
@@ -103,18 +145,23 @@ class TidalApiHandler:
         Returns synced lyrics if available.
         """
         try:
-            url = f"{self.base_url}/lyrics/"
+            cache_key = ("lyrics", track_id)
+            cached = self._get_cached(cache_key)
+            if cached is not None:
+                return cached
             params = {"id": track_id}
-            headers = {"User-Agent": "TidalGui/1.0"}
-            print(f"Fetching Lyrics: {url} with {params}")
-            response = requests.get(url, params=params, headers=headers, timeout=10)
+            print(f"Fetching Lyrics: {self.base_url}/lyrics/ with {params}")
+            response = self._request("lyrics/", params=params, timeout=10)
             
             if response.status_code == 404:
                 return {"error": "Lyrics not available for this track"}
             
             response.raise_for_status()
             data = response.json()
-            return data.get("lyrics", {})
+            payload = data.get("lyrics", {})
+            if payload:
+                self._set_cached(cache_key, payload)
+            return payload
         except Exception as e:
             return {"error": str(e)}
 
@@ -124,14 +171,12 @@ class TidalApiHandler:
         quality options: HI_RES_LOSSLESS, LOSSLESS, HIGH, LOW
         """
         try:
-            url = f"{self.base_url}/track/"
             params = {
                 "id": track_id,
                 "quality": quality
             }
-            headers = {"User-Agent": "TidalGui/1.0"}
-            print(f"Fetching Stream: {url} with {params}")
-            response = requests.get(url, params=params, headers=headers, timeout=15)
+            print(f"Fetching Stream: {self.base_url}/track/ with {params}")
+            response = self._request("track/", params=params, timeout=15)
             print(f"Stream Response Status: {response.status_code}")
             
             if response.status_code == 403:
@@ -139,7 +184,8 @@ class TidalApiHandler:
             
             response.raise_for_status()
             data = response.json()
-            print(f"Stream Data: {json.dumps(data, indent=2)}") # Debug print
+            if self.debug:
+                print(f"Stream Data: {json.dumps(data, indent=2)}") # Debug print
             
             # Data usually mimics playbackinfo response
             

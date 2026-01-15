@@ -96,6 +96,7 @@ class PlaybackManager:
         self.is_playing = False
         self.current_track_info = None
         self._vlc_available = None  # None = not checked yet
+        self.volume = 100
     
     def _ensure_vlc(self):
         """Lazy initialization of VLC - only when actually needed."""
@@ -108,6 +109,7 @@ class PlaybackManager:
             try:
                 self.instance = self.vlc_module.Instance('--no-xlib', '--quiet')
                 self.player = self.instance.media_player_new()
+                self.player.audio_set_volume(int(self.volume))
                 self._vlc_available = True
                 print("[PlaybackManager] VLC initialized successfully")
             except Exception as e:
@@ -174,10 +176,11 @@ class PlaybackManager:
         self.is_playing = False
 
     def set_volume(self, value):
+        self.volume = int(value)
         if not self._vlc_available:
             return
         try:
-            self.player.audio_set_volume(int(value))
+            self.player.audio_set_volume(self.volume)
         except:
             pass
 
