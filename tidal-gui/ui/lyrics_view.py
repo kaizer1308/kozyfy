@@ -1,5 +1,6 @@
 import customtkinter as ctk
 import re
+from bisect import bisect_right
 from typing import List, Tuple, Optional, Callable
 
 
@@ -70,6 +71,10 @@ class LyricsWindow(ctk.CTkToplevel):
         # Auto-scroll state
         self.auto_scroll = True
         self.user_scrolling = False
+        self._timestamp_index: List[int] = []
+        self._last_progress_ms = -1
+        self._user_scroll_reset_job = None
+        self._update_interval_ms = 200
         
         self._create_ui()
         self._start_updater()
@@ -152,11 +157,14 @@ class LyricsWindow(ctk.CTkToplevel):
         if self.auto_scroll_var.get():
             self.user_scrolling = True
             # Reset after 3 seconds of no scrolling
-            self.after(3000, self._reset_user_scroll)
+            if self._user_scroll_reset_job is not None:
+                self.after_cancel(self._user_scroll_reset_job)
+            self._user_scroll_reset_job = self.after(3000, self._reset_user_scroll)
     
     def _reset_user_scroll(self):
         """Reset user scrolling flag."""
         self.user_scrolling = False
+        self._user_scroll_reset_job = None
     
     def _toggle_auto_scroll(self):
         """Toggle auto-scroll feature."""
@@ -221,9 +229,18 @@ class LyricsWindow(ctk.CTkToplevel):
                 pass
         self.lyrics_lines.clear()
         self.synced_lyrics.clear()
+        self._timestamp_index.clear()
         self.spacer_widgets.clear()
         self.current_line_index = -1
+        self._last_progress_ms = -1
         self.status_label.pack_forget()
+        
+        # Reset scroll position to top
+        try:
+            canvas = self.lyrics_container._parent_canvas
+            canvas.yview_moveto(0)
+        except:
+            pass
     
     def _show_no_lyrics(self, message: str = "Lyrics not available"):
         """Display no lyrics message."""
@@ -270,6 +287,7 @@ class LyricsWindow(ctk.CTkToplevel):
         # Sort by timestamp
         parsed_lines.sort(key=lambda x: x[0])
         self.synced_lyrics = parsed_lines
+        self._timestamp_index = [timestamp_ms for timestamp_ms, _ in self.synced_lyrics]
         
         # Create UI elements
         self._create_lyrics_ui()
@@ -282,13 +300,14 @@ class LyricsWindow(ctk.CTkToplevel):
             text = line.strip()
             if text:
                 self.synced_lyrics.append((0, text))
+        self._timestamp_index = [timestamp_ms for timestamp_ms, _ in self.synced_lyrics]
         
         self._create_lyrics_ui()
     
     def _create_lyrics_ui(self):
         """Create UI elements for lyrics lines."""
-        # Add spacer at top for centering effect
-        spacer_top = ctk.CTkFrame(self.lyrics_container, fg_color="transparent", height=150)
+        # Add smaller spacer at top (just enough for centering first line when active)
+        spacer_top = ctk.CTkFrame(self.lyrics_container, fg_color="transparent", height=50)
         spacer_top.pack(fill="x")
         spacer_top.pack_propagate(False)
         self.spacer_widgets.append(spacer_top)
@@ -302,41 +321,67 @@ class LyricsWindow(ctk.CTkToplevel):
             line_widget.pack(pady=8, padx=20, fill="x")
             self.lyrics_lines.append(line_widget)
         
-        # Add spacer at bottom
-        spacer_bottom = ctk.CTkFrame(self.lyrics_container, fg_color="transparent", height=250)
+        # Add spacer at bottom for scrolling past last line
+        spacer_bottom = ctk.CTkFrame(self.lyrics_container, fg_color="transparent", height=200)
         spacer_bottom.pack(fill="x")
         spacer_bottom.pack_propagate(False)
         self.spacer_widgets.append(spacer_bottom)
         
-        # Force layout update
+        # Force layout update and scroll to top
         self.lyrics_container.update_idletasks()
+        
+        # Reset scroll to top so lyrics are visible from the start
+        try:
+            canvas = self.lyrics_container._parent_canvas
+            canvas.yview_moveto(0)
+        except:
+            pass
     
     def _start_updater(self):
         """Start the lyrics sync updater."""
+        delay_ms = self._update_interval_ms
         if self.is_synced and self.lyrics_lines and self.winfo_viewable():
-            self._update_active_line()
+            delay_ms = self._update_active_line() or self._update_interval_ms
         
         # Schedule next update
-        self.after(100, self._start_updater)
+        self.after(delay_ms, self._start_updater)
+
+    def _get_next_update_delay(self, current_ms: int, next_index: int) -> int:
+        """Compute adaptive update interval based on next lyric timestamp."""
+        if next_index < 0 or next_index >= len(self._timestamp_index):
+            return self._update_interval_ms
+
+        delta_ms = self._timestamp_index[next_index] - current_ms
+        if delta_ms <= 0:
+            return 50
+        if delta_ms <= 200:
+            return 50
+        if delta_ms <= 800:
+            return 100
+        if delta_ms <= 2000:
+            return 200
+        return 300
     
     def _update_active_line(self):
         """Update which lyrics line is active based on playback position."""
         if not self.synced_lyrics:
-            return
+            return self._update_interval_ms
         
         try:
             current_ms, length_ms, progress = self.get_progress()
             
             if length_ms <= 0:
-                return
+                return self._update_interval_ms
             
-            # Find the current line based on timestamp
-            new_index = -1
-            for i, (timestamp_ms, _) in enumerate(self.synced_lyrics):
-                if timestamp_ms <= current_ms:
-                    new_index = i
-                else:
-                    break
+            if not self._timestamp_index:
+                return self._update_interval_ms
+            
+            progress_changed = current_ms != self._last_progress_ms
+            if progress_changed:
+                self._last_progress_ms = current_ms
+                new_index = bisect_right(self._timestamp_index, current_ms) - 1
+            else:
+                new_index = self.current_line_index
             
             # Update line styles if index changed
             if new_index != self.current_line_index:
@@ -359,9 +404,13 @@ class LyricsWindow(ctk.CTkToplevel):
                         self.lyrics_lines[i].set_upcoming()
                 
                 self.current_line_index = new_index
+            
+            return self._get_next_update_delay(current_ms, new_index + 1)
                 
         except Exception as e:
             print(f"[LyricsWindow] Update error: {e}")
+
+        return self._update_interval_ms
     
     def _scroll_to_line(self, index: int):
         """Scroll the lyrics container to center the given line."""

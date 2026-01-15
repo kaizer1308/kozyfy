@@ -18,6 +18,10 @@ class PlayerBar(ctk.CTkFrame):
         self._target_progress = 0
         self._last_time_ms = 0
         self._track_length_ms = 0
+        self._last_display_second = None
+        self._last_total_time_ms = None
+        self._last_slider_value = 0
+        self._smooth_interval_ms = 33
         
         self._start_updater()
         self._start_smooth_slider()
@@ -140,6 +144,12 @@ class PlayerBar(ctk.CTkFrame):
         self.btn_dl_current.configure(state="normal")
         self.btn_lyrics.configure(state="normal")
         self.btn_play.configure(image=self.icon_pause)
+        self._last_display_second = None
+        self._last_total_time_ms = None
+        self._last_slider_value = 0
+        self._last_progress = 0
+        self._target_progress = 0
+        self._track_length_ms = 0
 
     def _start_updater(self):
         """Fetch actual position from VLC at lower frequency."""
@@ -154,14 +164,20 @@ class PlayerBar(ctk.CTkFrame):
             self._target_progress = prog
             self._last_time_ms = curr
             self._track_length_ms = length
-            self.lbl_current_time.configure(text=fmt_time(curr))
-            self.lbl_total_time.configure(text=fmt_time(length))
+            current_second = curr // 1000
+            if current_second != self._last_display_second:
+                self.lbl_current_time.configure(text=fmt_time(curr))
+                self._last_display_second = current_second
+            if length != self._last_total_time_ms:
+                self.lbl_total_time.configure(text=fmt_time(length))
+                self._last_total_time_ms = length
         
         # Update actual position every 200ms (VLC polling)
         self.after(200, self._start_updater)
     
     def _start_smooth_slider(self):
         """Interpolate slider position at 60fps for smooth animation."""
+        delay_ms = 200
         if self._track_length_ms > 0 and self.playback_manager.is_playing:
             # Interpolate: estimate current position based on time elapsed
             # This creates smooth motion between VLC position updates
@@ -175,8 +191,8 @@ class PlayerBar(ctk.CTkFrame):
                 self._last_progress += diff * 0.3
             else:
                 # Normal playback - smooth interpolation
-                # Add estimated progress based on frame time (~16ms)
-                estimated_advance = 16 / self._track_length_ms
+                # Add estimated progress based on frame time
+                estimated_advance = self._smooth_interval_ms / self._track_length_ms
                 self._last_progress += estimated_advance
                 
                 # Also lerp towards actual target to stay synced
@@ -184,11 +200,18 @@ class PlayerBar(ctk.CTkFrame):
             
             # Clamp to valid range
             self._last_progress = max(0, min(1, self._last_progress))
-            self.slider_progress.set(self._last_progress)
+            if abs(self._last_progress - self._last_slider_value) > 0.001:
+                self._last_slider_value = self._last_progress
+                self.slider_progress.set(self._last_progress)
+            delay_ms = self._smooth_interval_ms
         elif self._track_length_ms > 0:
             # Paused - just sync to target
             self._last_progress = self._target_progress
-            self.slider_progress.set(self._last_progress)
+            if abs(self._last_progress - self._last_slider_value) > 0.001:
+                self._last_slider_value = self._last_progress
+                self.slider_progress.set(self._last_progress)
+            delay_ms = 150
+        else:
+            delay_ms = 250
         
-        # 60fps = ~16ms interval
-        self.after(16, self._start_smooth_slider)
+        self.after(delay_ms, self._start_smooth_slider)

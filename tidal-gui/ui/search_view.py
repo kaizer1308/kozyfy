@@ -5,8 +5,15 @@ class SearchResultsView(ctk.CTkScrollableFrame):
         super().__init__(master, label_text="Results", **kwargs)
         self.on_play = on_play
         self.on_download = on_download
+        self._pending_items = []
+        self._render_job = None
+        self._render_batch_size = 20
 
     def clear(self):
+        if self._render_job is not None:
+            self.after_cancel(self._render_job)
+            self._render_job = None
+        self._pending_items = []
         for widget in self.winfo_children():
             widget.destroy()
 
@@ -16,8 +23,23 @@ class SearchResultsView(ctk.CTkScrollableFrame):
 
     def populate(self, items):
         self.clear()
-        for item in items:
+        self._pending_items = list(items)
+        self._render_next_batch()
+
+    def _render_next_batch(self):
+        if not self._pending_items:
+            self._render_job = None
+            return
+
+        batch_count = min(self._render_batch_size, len(self._pending_items))
+        for _ in range(batch_count):
+            item = self._pending_items.pop(0)
             self._create_row(item)
+
+        if self._pending_items:
+            self._render_job = self.after(1, self._render_next_batch)
+        else:
+            self._render_job = None
 
     def _create_row(self, item):
         item_type = item.get("_type", "TRACK")
