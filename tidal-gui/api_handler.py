@@ -8,7 +8,9 @@ import sys
 import time
 import logging
 import queue
+from collections import deque
 from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger("kozyfy.api")
 
@@ -16,24 +18,44 @@ class TidalApiHandler:
     def __init__(self, base_url="https://tidal-api.binimum.org"):
         self.base_url = base_url.rstrip("/")
         self._session = requests.Session()
-        adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20)
+        retries = Retry(
+            total=3,
+            connect=3,
+            read=3,
+            status=3,
+            backoff_factor=0.3,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=frozenset(["GET"]),
+            respect_retry_after_header=True,
+        )
+        adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20, max_retries=retries)
         self._session.mount("https://", adapter)
         self._session.mount("http://", adapter)
         self._default_headers = {"User-Agent": "TidalGui/1.0"}
+        self._session.headers.update(self._default_headers)
+        self._timeout = (3.05, 15)
         self._cache = {}
         self._cache_lock = threading.Lock()
         self._cache_ttl_sec = 300
+        self._search_cache_ttl_sec = 60
+        self._cache_max_entries = 512
         self.debug = False
 
     def set_base_url(self, url):
         self.base_url = url.rstrip("/")
 
-    def _request(self, path, params=None, headers=None, timeout=10):
+    def _request(self, path, params=None, headers=None, timeout=None):
         url = f"{self.base_url}/{path.lstrip('/')}"
-        merged_headers = dict(self._default_headers)
-        if headers:
-            merged_headers.update(headers)
-        return self._session.get(url, params=params, headers=merged_headers, timeout=timeout)
+        if timeout is None:
+            timeout = self._timeout
+        return self._session.get(url, params=params, headers=headers, timeout=timeout)
+
+    def _parse_json(self, response, context):
+        try:
+            return response.json()
+        except ValueError:
+            logger.error("Invalid JSON response | context=%s", context)
+            return None
 
     def _get_cached(self, cache_key):
         now = time.monotonic()
@@ -51,6 +73,15 @@ class TidalApiHandler:
         expires_at = time.monotonic() + (ttl or self._cache_ttl_sec)
         with self._cache_lock:
             self._cache[cache_key] = (expires_at, value)
+            if len(self._cache) > self._cache_max_entries:
+                now = time.monotonic()
+                expired_keys = [key for key, (exp, _) in self._cache.items() if exp < now]
+                for key in expired_keys:
+                    self._cache.pop(key, None)
+                if len(self._cache) > self._cache_max_entries:
+                    oldest_keys = sorted(self._cache.items(), key=lambda item: item[1][0])
+                    for key, _ in oldest_keys[: len(self._cache) - self._cache_max_entries]:
+                        self._cache.pop(key, None)
 
     def search_tracks(self, query):
         """
@@ -58,11 +89,17 @@ class TidalApiHandler:
         Returns a list of dicts (track info).
         """
         try:
+            cache_key = ("search_tracks", query.strip().lower())
+            cached = self._get_cached(cache_key)
+            if cached is not None:
+                return cached
             params = {"s": query}
             logger.info("Searching tracks | query=%s", query)
             response = self._request("search/", params=params, timeout=10)
             response.raise_for_status()
-            data = response.json()
+            data = self._parse_json(response, "search_tracks")
+            if data is None:
+                return {"error": "Invalid API response"}
             
             # Tidal response for search/tracks often looks like:
             # { "items": [ ... ], "limit": 50, ... }
@@ -70,12 +107,15 @@ class TidalApiHandler:
             # hifi-api returns the direct response from Tidal.
             
             if "items" in data:
-                return data["items"]
+                results = data["items"]
             elif "data" in data and "items" in data["data"]:
-                 return data["data"]["items"]
-            
+                results = data["data"]["items"]
+            else:
+                results = []
+
             # Fallback for some wrappers
-            return []
+            self._set_cached(cache_key, results, ttl=self._search_cache_ttl_sec)
+            return results
         except Exception as e:
             logger.exception("Search tracks failed | query=%s", query)
             return {"error": str(e)}
@@ -86,20 +126,29 @@ class TidalApiHandler:
         Returns a list of dicts (album info).
         """
         try:
+            cache_key = ("search_albums", query.strip().lower())
+            cached = self._get_cached(cache_key)
+            if cached is not None:
+                return cached
             params = {"al": query}
             logger.info("Searching albums | query=%s", query)
             response = self._request("search/", params=params, timeout=10)
             response.raise_for_status()
-            data = response.json()
+            data = self._parse_json(response, "search_albums")
+            if data is None:
+                return {"error": "Invalid API response"}
             
             # Tidal response for top-hits with types=ALBUMS usually has "albums": { "items": ... }
             if "albums" in data and "items" in data["albums"]:
-                return data["albums"]["items"]
+                results = data["albums"]["items"]
             # Sometimes wrapped in "data"
             elif "data" in data and "albums" in data["data"] and "items" in data["data"]["albums"]:
-                return data["data"]["albums"]["items"]
-            
-            return []
+                results = data["data"]["albums"]["items"]
+            else:
+                results = []
+
+            self._set_cached(cache_key, results, ttl=self._search_cache_ttl_sec)
+            return results
         except Exception as e:
             logger.exception("Search albums failed | query=%s", query)
             return {"error": str(e)}
@@ -114,7 +163,10 @@ class TidalApiHandler:
             params = {"id": track_id}
             response = self._request("info/", params=params, timeout=10)
             response.raise_for_status()
-            payload = response.json().get("data", {})
+            data = self._parse_json(response, "track_details")
+            if data is None:
+                return {}
+            payload = data.get("data", {})
             if payload:
                 self._set_cached(cache_key, payload)
             return payload
@@ -135,7 +187,9 @@ class TidalApiHandler:
             logger.info("Fetching album | album_id=%s", album_id)
             response = self._request("album/", params=params, timeout=15)
             response.raise_for_status()
-            data = response.json()
+            data = self._parse_json(response, "album")
+            if data is None:
+                return {}
             # hifi-api returns { "data": { ...album_info, "items": [...] } }
             payload = data.get("data", {})
             if payload:
@@ -160,10 +214,14 @@ class TidalApiHandler:
             response = self._request("lyrics/", params=params, timeout=10)
             
             if response.status_code == 404:
-                return {"error": "Lyrics not available for this track"}
+                payload = {"error": "Lyrics not available for this track"}
+                self._set_cached(cache_key, payload, ttl=self._search_cache_ttl_sec)
+                return payload
             
             response.raise_for_status()
-            data = response.json()
+            data = self._parse_json(response, "lyrics")
+            if data is None:
+                return {"error": "Invalid API response"}
             payload = data.get("lyrics", {})
             if payload:
                 self._set_cached(cache_key, payload)
@@ -190,7 +248,9 @@ class TidalApiHandler:
                 return {"error": "403 Forbidden. The API blocked the request. If using a public instance, try another or use your local hifi-api."}
             
             response.raise_for_status()
-            data = response.json()
+            data = self._parse_json(response, "stream")
+            if data is None:
+                return {"error": "Invalid API response"}
             if self.debug:
                 logger.debug("Stream data: %s", json.dumps(data, indent=2))
             
@@ -256,7 +316,7 @@ class TidalApiHandler:
         if metadata:
             for key, value in metadata.items():
                 if value:
-                     cmd.extend(["-metadata", f"{key}={value}"])
+                    cmd.extend(["-metadata", f"{key}={value}"])
 
         cmd.extend([
             "-c:a", "copy",
@@ -285,7 +345,7 @@ class TidalApiHandler:
             )
 
             stderr_queue = queue.Queue()
-            stderr_lines = []
+            stderr_lines = deque(maxlen=200)
 
             def _read_stderr():
                 for line in iter(process.stderr.readline, ''):
