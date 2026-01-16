@@ -41,9 +41,6 @@ class TidalApp(ctk.CTk):
         self.title("Kozyfy")
         self.geometry("1000x800")
         
-        # Check dependencies before proceeding
-        self._check_dependencies()
-        
         self.api = TidalApiHandler()
         self.api.set_base_url("https://triton.squid.wtf")
         
@@ -54,37 +51,41 @@ class TidalApp(ctk.CTk):
         self.temp_dir = get_temp_dir()
 
         self.playback = PlaybackManager()
-        
-        self.downloads_window = DownloadsWindow(self)
-        
-        # Create lyrics window with playback progress callback
-        self.lyrics_window = LyricsWindow(self, self.playback.get_progress)
+
+        self.downloads_window = None
+        self.lyrics_window = None
         
         # State
         self.current_results = []
         
         self._setup_layout()
-        
+
+        # Check dependencies after UI is responsive
+        self.after(100, self._check_dependencies_async)
+
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
     
-    def _check_dependencies(self):
-        """Check for required dependencies and show warning if missing."""
-        # Check FFmpeg first (doesn't cause DLL errors)
-        deps = check_all_dependencies()
-        
-        # FFmpeg is critical for downloads
-        if not deps["ffmpeg"]["ok"]:
-            self.after(100, lambda: messagebox.showwarning(
-                "FFmpeg Not Found",
-                "FFmpeg is not installed or not in PATH.\n\n"
-                "Download features will not work.\n\n"
-                "Please install FFmpeg from:\n"
-                "https://ffmpeg.org/download.html\n\n"
-                "Make sure to add FFmpeg to your system PATH."
-            ))
-        
-        # VLC check is now done lazily when playback is attempted
-        # to avoid DLL errors on startup
+    def _check_dependencies_async(self):
+        """Check for required dependencies in a background thread."""
+        def worker():
+            # Check FFmpeg first (doesn't cause DLL errors)
+            deps = check_all_dependencies()
+
+            # FFmpeg is critical for downloads
+            if not deps["ffmpeg"]["ok"]:
+                self.after(0, lambda: messagebox.showwarning(
+                    "FFmpeg Not Found",
+                    "FFmpeg is not installed or not in PATH.\n\n"
+                    "Download features will not work.\n\n"
+                    "Please install FFmpeg from:\n"
+                    "https://ffmpeg.org/download.html\n\n"
+                    "Make sure to add FFmpeg to your system PATH."
+                ))
+
+            # VLC check is now done lazily when playback is attempted
+            # to avoid DLL errors on startup
+
+        threading.Thread(target=worker, daemon=True).start()
     
     def _load_download_path(self):
         """Load saved download path or use default."""
@@ -130,7 +131,7 @@ class TidalApp(ctk.CTk):
         ctk.CTkButton(self.top_frame, text="Settings", width=100, command=self.open_settings).pack(side="left", padx=5)
 
         # Downloads Button (Left)
-        ctk.CTkButton(self.top_frame, text="Downloads", width=100, command=self.downloads_window.show_window).pack(side="left", padx=5)
+        ctk.CTkButton(self.top_frame, text="Downloads", width=100, command=self.show_downloads_window).pack(side="left", padx=5)
 
         # Filter Switch (Rightmost)
         self.filter_var = ctk.BooleanVar(value=False)
@@ -176,9 +177,22 @@ class TidalApp(ctk.CTk):
         )
         self.player_bar.grid(row=3, column=0, padx=10, pady=10, sticky="ew")
 
+    def _ensure_downloads_window(self):
+        if self.downloads_window is None or not self.downloads_window.winfo_exists():
+            self.downloads_window = DownloadsWindow(self)
+        return self.downloads_window
+
+    def _ensure_lyrics_window(self):
+        if self.lyrics_window is None or not self.lyrics_window.winfo_exists():
+            self.lyrics_window = LyricsWindow(self, self.playback.get_progress)
+        return self.lyrics_window
+
+    def show_downloads_window(self):
+        self._ensure_downloads_window().show_window()
+
     def toggle_lyrics_window(self):
         """Toggle the lyrics window visibility."""
-        self.lyrics_window.toggle_window()
+        self._ensure_lyrics_window().toggle_window()
 
     # --- Actions ---
 
@@ -299,8 +313,10 @@ class TidalApp(ctk.CTk):
 
     def _load_lyrics_for_track(self, track_info, cover_img=None):
         """Fetch and load lyrics for the current track."""
+        lyrics_window = self._ensure_lyrics_window()
+
         # Update lyrics window with track info immediately
-        self.lyrics_window.set_track_info(track_info, cover_img)
+        lyrics_window.set_track_info(track_info, cover_img)
         
         # Fetch lyrics in background thread
         threading.Thread(
@@ -319,11 +335,13 @@ class TidalApp(ctk.CTk):
 
     # --- Download Logic (Controller) ---
     def start_download(self, item_id, item_title, item_type="TRACK"):
+        downloads_window = self._ensure_downloads_window()
+
         if item_type == "ALBUM":
              threading.Thread(target=self._download_album_worker, args=(item_id, item_title)).start()
              return
 
-        if item_id in self.downloads_window.active_downloads:
+        if item_id in downloads_window.active_downloads:
             print(f"[App] Skipping download: {item_title} (Already in queue)")
             return
 
@@ -331,6 +349,7 @@ class TidalApp(ctk.CTk):
         threading.Thread(target=self._download_worker, args=(item_id, item_title, quality)).start()
 
     def _download_album_worker(self, album_id, album_title):
+        downloads_window = self.downloads_window
         print(f"[App] Fetching album {album_id}...")
         try:
             album_data = self.api.get_album(album_id)
@@ -362,7 +381,7 @@ class TidalApp(ctk.CTk):
                      
                 display = f"{artist} - {title}"
                 
-                if t_id and t_id not in self.downloads_window.active_downloads:
+                if t_id and t_id not in downloads_window.active_downloads:
                     # Download in parallel
                     threading.Thread(target=self._download_worker, args=(t_id, display, quality, album_dir)).start()
         except Exception as e:
@@ -376,8 +395,10 @@ class TidalApp(ctk.CTk):
         print(f"[App] Downloading {filename}...")
         target_dir = output_dir if output_dir else self.download_path
         
+        downloads_window = self.downloads_window
+
         # Add to Download UI
-        self.after(0, lambda: self.downloads_window.add_download(track_id, filename))
+        self.after(0, lambda: downloads_window.add_download(track_id, filename))
         
         details = self.api.get_track_details(track_id)
         duration = details.get("duration", 0)
@@ -420,12 +441,12 @@ class TidalApp(ctk.CTk):
         output_path = os.path.join(target_dir, f"{safe_name}{ext}")
         
         def progress_cb(p):
-            self.after(0, lambda: self.downloads_window.update_download(track_id, p))
+            self.after(0, lambda: downloads_window.update_download(track_id, p))
         
         success, msg = self.api.download_stream(final_url, output_path, metadata, cover_path, progress_cb, duration=duration)
         
         print(f"[App] Download {'Complete' if success else 'Failed'}: {output_path}")
-        self.after(0, lambda: self.downloads_window.finish_download(track_id, success, msg))
+        self.after(0, lambda: downloads_window.finish_download(track_id, success, msg))
 
         # Cleanup
         if cover_path and os.path.exists(cover_path): os.remove(cover_path)
