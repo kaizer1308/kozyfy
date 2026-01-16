@@ -7,6 +7,7 @@ import re
 import sys
 import time
 import logging
+import queue
 from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger("kozyfy.api")
@@ -206,7 +207,7 @@ class TidalApiHandler:
             logger.exception("Failed to fetch stream | track_id=%s", track_id)
             return {"error": "Failed to fetch stream"}
 
-    def download_stream(self, stream_url, output_path, metadata=None, cover_path=None, update_callback=None, duration=None):
+    def download_stream(self, stream_url, output_path, metadata=None, cover_path=None, update_callback=None, duration=None, cancel_event=None):
         """
         Download the stream using ffmpeg with metadata and cover art.
         """
@@ -267,7 +268,9 @@ class TidalApiHandler:
         try:
             if update_callback:
                 update_callback(0) # Start with 0%
-            
+            if cancel_event and cancel_event.is_set():
+                return False, "Cancelled"
+
             # Use Popen to capture stderr in real-time
             # Use CREATE_NO_WINDOW on Windows to hide console
             # Use errors='replace' for encoding to handle non-UTF8 output
@@ -280,14 +283,33 @@ class TidalApiHandler:
                 errors='replace',
                 creationflags=creationflags
             )
-            
+
+            stderr_queue = queue.Queue()
+            stderr_lines = []
+
+            def _read_stderr():
+                for line in iter(process.stderr.readline, ''):
+                    if not line:
+                        break
+                    stderr_lines.append(line)
+                    stderr_queue.put(line)
+
+            threading.Thread(target=_read_stderr, daemon=True).start()
+
             time_pattern = re.compile(r"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})")
-            
+
             while True:
-                line = process.stderr.readline()
-                if not line and process.poll() is not None:
+                if cancel_event and cancel_event.is_set():
+                    process.terminate()
                     break
-                
+
+                try:
+                    line = stderr_queue.get(timeout=0.1)
+                except queue.Empty:
+                    if process.poll() is not None:
+                        break
+                    continue
+
                 if line and update_callback and duration:
                     match = time_pattern.search(line)
                     if match:
@@ -297,12 +319,15 @@ class TidalApiHandler:
                         update_callback(percent)
             
             process.wait()
-            
+
+            if cancel_event and cancel_event.is_set():
+                return False, "Cancelled"
+
             if process.returncode == 0:
                 if update_callback: update_callback(100)
                 return True, "Download completed."
             else:
-                err = process.stderr.read()
+                err = "".join(stderr_lines)
                 return False, f"FFmpeg error: {err}"
 
         except Exception as e:

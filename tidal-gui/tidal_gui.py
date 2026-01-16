@@ -67,6 +67,8 @@ class TidalApp(ctk.CTk):
 
         self.downloads_window = None
         self.lyrics_window = None
+        self.download_cancel_events = {}
+        self._download_cancel_lock = threading.Lock()
         
         # State
         self.current_results = []
@@ -196,7 +198,7 @@ class TidalApp(ctk.CTk):
 
     def _ensure_downloads_window(self):
         if self.downloads_window is None or not self.downloads_window.winfo_exists():
-            self.downloads_window = DownloadsWindow(self)
+            self.downloads_window = DownloadsWindow(self, on_cancel=self.cancel_download)
         return self.downloads_window
 
     def _ensure_lyrics_window(self):
@@ -206,6 +208,14 @@ class TidalApp(ctk.CTk):
 
     def show_downloads_window(self):
         self._ensure_downloads_window().show_window()
+
+    def cancel_download(self, track_id):
+        with self._download_cancel_lock:
+            cancel_event = self.download_cancel_events.get(track_id)
+        if cancel_event:
+            cancel_event.set()
+        else:
+            logger.info("Cancel requested for unknown download: %s", track_id)
 
     def toggle_lyrics_window(self):
         """Toggle the lyrics window visibility."""
@@ -468,59 +478,89 @@ class TidalApp(ctk.CTk):
         target_dir = output_dir if output_dir else self.download_path
         
         downloads_window = self.downloads_window
+        cancel_event = threading.Event()
+        with self._download_cancel_lock:
+            self.download_cancel_events[track_id] = cancel_event
 
-        # Add to Download UI
-        self.after(0, lambda: downloads_window.add_download(track_id, filename))
-        
-        details = self.api.get_track_details(track_id)
-        duration = details.get("duration", 0)
-        
-        metadata = {
-            "title": details.get("title", filename.split(" - ")[-1]),
-            "artist": details.get("artist", {}).get("name", ""),
-            "album": details.get("album", {}).get("title", ""),
-            "date": str(details.get("streamStartDate", ""))[:4],
-            "track": f"{details.get('trackNumber', '')}",
-            "disc": f"{details.get('volumeNumber', '')}",
-            "copyright": details.get("copyright", ""),
-            "comment": "Kozydot<3You"
-        }
-        
-        # Cover for file tagging - save to temp dir to avoid permission issues
         cover_path = None
-        if details.get("album", {}).get("cover"):
-            try:
-                uuid = details["album"]["cover"].replace('-', '/')
-                curr_url = f"https://resources.tidal.com/images/{uuid}/1280x1280.jpg"
-                r = requests.get(curr_url, timeout=15)
-                if r.status_code == 200:
-                    cover_path = os.path.join(self.temp_dir, f"cover_{track_id}.jpg")
-                    with open(cover_path, "wb") as f: f.write(r.content)
-            except Exception as e:
-                logger.exception("Cover download failed for track %s", track_id)
 
-        stream_data = self.api.get_stream_url(track_id, quality=quality)
-        final_url = self._resolve_stream_url(stream_data, track_id, is_playback=False)
-        
-        if not final_url:
-            logger.error("Download failed for %s: no URL", filename)
-            self.after(0, lambda: self.downloads_window.finish_download(track_id, False, "No URL"))
-            if cover_path and os.path.exists(cover_path): os.remove(cover_path)
-            return
+        try:
+            # Add to Download UI
+            self.after(0, lambda: downloads_window.add_download(track_id, filename))
+
+            if cancel_event.is_set():
+                self.after(0, lambda: downloads_window.finish_download(track_id, False, "Cancelled"))
+                return
+
+            details = self.api.get_track_details(track_id)
+            duration = details.get("duration", 0)
+
+            if cancel_event.is_set():
+                self.after(0, lambda: downloads_window.finish_download(track_id, False, "Cancelled"))
+                return
             
-        safe_name = "".join([c for c in filename if c.isalpha() or c.isdigit() or c in " .-_()"]).strip()
-        ext = ".flac" if quality in ["HI_RES_LOSSLESS", "LOSSLESS"] else ".m4a"
-        output_path = os.path.join(target_dir, f"{safe_name}{ext}")
-        
-        def progress_cb(p):
-            self.after(0, lambda: downloads_window.update_download(track_id, p))
-        
-        success, msg = self.api.download_stream(final_url, output_path, metadata, cover_path, progress_cb, duration=duration)
-        logger.info("Download %s: %s", "completed" if success else "failed", output_path)
-        self.after(0, lambda: downloads_window.finish_download(track_id, success, msg))
+            metadata = {
+                "title": details.get("title", filename.split(" - ")[-1]),
+                "artist": details.get("artist", {}).get("name", ""),
+                "album": details.get("album", {}).get("title", ""),
+                "date": str(details.get("streamStartDate", ""))[:4],
+                "track": f"{details.get('trackNumber', '')}",
+                "disc": f"{details.get('volumeNumber', '')}",
+                "copyright": details.get("copyright", ""),
+                "comment": "Kozydot<3You"
+            }
+            
+            # Cover for file tagging - save to temp dir to avoid permission issues
+            if details.get("album", {}).get("cover"):
+                try:
+                    uuid = details["album"]["cover"].replace('-', '/')
+                    curr_url = f"https://resources.tidal.com/images/{uuid}/1280x1280.jpg"
+                    r = requests.get(curr_url, timeout=15)
+                    if r.status_code == 200:
+                        cover_path = os.path.join(self.temp_dir, f"cover_{track_id}.jpg")
+                        with open(cover_path, "wb") as f: f.write(r.content)
+                except Exception as e:
+                    logger.exception("Cover download failed for track %s", track_id)
 
-        # Cleanup
-        if cover_path and os.path.exists(cover_path): os.remove(cover_path)
+            if cancel_event.is_set():
+                self.after(0, lambda: downloads_window.finish_download(track_id, False, "Cancelled"))
+                return
+
+            stream_data = self.api.get_stream_url(track_id, quality=quality)
+            final_url = self._resolve_stream_url(stream_data, track_id, is_playback=False)
+            
+            if not final_url:
+                logger.error("Download failed for %s: no URL", filename)
+                self.after(0, lambda: self.downloads_window.finish_download(track_id, False, "No URL"))
+                return
+
+            if cancel_event.is_set():
+                self.after(0, lambda: downloads_window.finish_download(track_id, False, "Cancelled"))
+                return
+                
+            safe_name = "".join([c for c in filename if c.isalpha() or c.isdigit() or c in " .-_()"]).strip()
+            ext = ".flac" if quality in ["HI_RES_LOSSLESS", "LOSSLESS"] else ".m4a"
+            output_path = os.path.join(target_dir, f"{safe_name}{ext}")
+            
+            def progress_cb(p):
+                self.after(0, lambda: downloads_window.update_download(track_id, p))
+            
+            success, msg = self.api.download_stream(
+                final_url,
+                output_path,
+                metadata,
+                cover_path,
+                progress_cb,
+                duration=duration,
+                cancel_event=cancel_event
+            )
+            logger.info("Download %s: %s", "completed" if success else "failed", output_path)
+            self.after(0, lambda: downloads_window.finish_download(track_id, success, msg))
+        finally:
+            if cover_path and os.path.exists(cover_path):
+                os.remove(cover_path)
+            with self._download_cancel_lock:
+                self.download_cancel_events.pop(track_id, None)
 
     # --- Helpers ---
     def _fetch_cover_image(self, uuid):
