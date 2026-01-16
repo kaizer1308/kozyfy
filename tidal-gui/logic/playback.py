@@ -1,6 +1,9 @@
 import threading
 import sys
 import os
+import logging
+
+logger = logging.getLogger("kozyfy.playback")
 
 # VLC is loaded lazily to prevent DLL errors on startup
 _vlc = None
@@ -97,6 +100,8 @@ class PlaybackManager:
         self.current_track_info = None
         self._vlc_available = None  # None = not checked yet
         self.volume = 100
+        self.on_track_end = None
+        self._end_notified = False
     
     def _ensure_vlc(self):
         """Lazy initialization of VLC - only when actually needed."""
@@ -111,13 +116,13 @@ class PlaybackManager:
                 self.player = self.instance.media_player_new()
                 self.player.audio_set_volume(int(self.volume))
                 self._vlc_available = True
-                print("[PlaybackManager] VLC initialized successfully")
-            except Exception as e:
-                print(f"[PlaybackManager] Failed to create VLC instance: {e}")
+                logger.info("VLC initialized successfully")
+            except Exception:
+                logger.exception("Failed to create VLC instance")
                 self._vlc_available = False
-                self.vlc_error = str(e)
+                self.vlc_error = "Failed to create VLC instance"
         else:
-            print(f"[PlaybackManager] VLC not available: {self.vlc_error}")
+            logger.error("VLC not available: %s", self.vlc_error)
             self._vlc_available = False
         
         return self._vlc_available
@@ -131,9 +136,13 @@ class PlaybackManager:
         self._ensure_vlc()
         return self.vlc_error
 
+    def set_on_track_end(self, callback):
+        """Register a callback invoked when the current track ends."""
+        self.on_track_end = callback
+
     def play(self, url, track_info):
         if not self._vlc_available:
-            print("[PlaybackManager] Cannot play - VLC not available")
+            logger.warning("Cannot play - VLC not available")
             return False
         
         try:
@@ -145,9 +154,10 @@ class PlaybackManager:
             self.current_playing_id = track_info["id"]
             self.current_track_info = track_info
             self.is_playing = True
+            self._end_notified = False
             return True
-        except Exception as e:
-            print(f"[PlaybackManager] Play error: {e}")
+        except Exception:
+            logger.exception("Playback start failed")
             return False
 
     def toggle(self):
@@ -162,8 +172,8 @@ class PlaybackManager:
                 self.player.play()
                 self.is_playing = True
             return self.is_playing
-        except Exception as e:
-            print(f"[PlaybackManager] Toggle error: {e}")
+        except Exception:
+            logger.exception("Playback toggle failed")
             return False
 
     def stop(self):
@@ -189,6 +199,15 @@ class PlaybackManager:
         if not self._vlc_available:
             return 0, 0, 0
         try:
+            if self.vlc_module and self.player:
+                state = self.player.get_state()
+                if state == self.vlc_module.State.Ended:
+                    if not self._end_notified:
+                        self.is_playing = False
+                        self._end_notified = True
+                        if self.on_track_end:
+                            self.on_track_end()
+                    return 0, 0, 0
             if self.is_playing and self.player.is_playing():
                 length = self.player.get_length()
                 current = self.player.get_time()

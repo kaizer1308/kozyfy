@@ -1,7 +1,10 @@
 import customtkinter as ctk
 import re
+import logging
 from bisect import bisect_right
 from typing import List, Tuple, Optional, Callable
+
+logger = logging.getLogger("kozyfy.lyrics")
 
 
 class LyricsLine(ctk.CTkLabel):
@@ -430,8 +433,8 @@ class LyricsWindow(ctk.CTkToplevel):
             
             return self._get_next_update_delay(current_ms, new_index + 1)
                 
-        except Exception as e:
-            print(f"[LyricsWindow] Update error: {e}")
+        except Exception:
+            logger.exception("Lyrics update error")
 
         return self._update_interval_ms
     
@@ -500,8 +503,8 @@ class LyricsWindow(ctk.CTkToplevel):
                 fraction = desired_scroll_top / total_height
                 canvas.yview_moveto(fraction)
             
-        except Exception as e:
-            print(f"[LyricsWindow] Scroll error: {e}")
+        except Exception:
+            logger.exception("Lyrics scroll error")
     
     def reset(self):
         """Reset lyrics state."""

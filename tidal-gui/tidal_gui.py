@@ -1,5 +1,6 @@
 import sys
 import os
+import logging
 
 # Fix for bundled app - ensure proper import paths
 if getattr(sys, 'frozen', False):
@@ -21,6 +22,17 @@ from io import BytesIO
 # Set SSL certificate path for bundled app
 os.environ['SSL_CERT_FILE'] = certifi.where()
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
+
+LOG_LEVEL = os.environ.get("KOZYFY_LOG_LEVEL", "INFO").upper()
+root_logger = logging.getLogger()
+if not root_logger.handlers:
+    logging.basicConfig(
+        level=getattr(logging, LOG_LEVEL, logging.INFO),
+        format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+
+logger = logging.getLogger("kozyfy.app")
 
 from api_handler import TidalApiHandler
 from logic.playback import PlaybackManager
@@ -51,12 +63,15 @@ class TidalApp(ctk.CTk):
         self.temp_dir = get_temp_dir()
 
         self.playback = PlaybackManager()
+        self.playback.set_on_track_end(self._handle_track_end)
 
         self.downloads_window = None
         self.lyrics_window = None
         
         # State
         self.current_results = []
+        self.playback_queue = []
+        self.playback_index = None
         
         self._setup_layout()
 
@@ -173,7 +188,9 @@ class TidalApp(ctk.CTk):
             self, 
             self.playback, 
             on_download_click=self.on_player_download,
-            on_lyrics_click=self.toggle_lyrics_window
+            on_lyrics_click=self.toggle_lyrics_window,
+            on_prev_click=self.play_prev_track,
+            on_next_click=self.play_next_track
         )
         self.player_bar.grid(row=3, column=0, padx=10, pady=10, sticky="ew")
 
@@ -250,10 +267,12 @@ class TidalApp(ctk.CTk):
         self.results_view.populate(items_to_show)
         if not items_to_show and filter_on:
             self.results_view.display_message(f"No items match quality: {target_q}")
+        self._update_playback_queue(items_to_show)
 
     # --- Playback Logic (Controller) ---
 
     def start_playback(self, track_id):
+        self._set_current_track_in_queue(track_id)
         # Resume if same track handled by PlayerBar/Manager
         if self.playback.current_playing_id == track_id:
             self.player_bar.toggle_play()
@@ -286,7 +305,7 @@ class TidalApp(ctk.CTk):
         if final_url:
             self.after(0, lambda: self._start_vlc(final_url, track_info, cover_img))
         else:
-            print("[App] Failed to resolve stream for playback")
+            logger.error("Playback stream resolution failed for track %s", track_id)
             self.after(0, lambda: messagebox.showerror("Playback Error", "Failed to get stream URL for this track."))
 
     def _start_vlc(self, url, track_info, cover_img):
@@ -311,6 +330,59 @@ class TidalApp(ctk.CTk):
         else:
             messagebox.showerror("Playback Error", "Failed to start playback. Please check VLC installation.")
 
+    def _update_playback_queue(self, items):
+        queue = [item.get("id") for item in items if item.get("_type", "TRACK") == "TRACK" and item.get("id")]
+        self.playback_queue = queue
+        if self.playback.current_playing_id in queue:
+            self.playback_index = queue.index(self.playback.current_playing_id)
+        else:
+            self.playback_index = None
+        self._update_prev_next_buttons()
+
+    def _set_current_track_in_queue(self, track_id):
+        if track_id in self.playback_queue:
+            self.playback_index = self.playback_queue.index(track_id)
+        else:
+            self.playback_queue = [track_id]
+            self.playback_index = 0
+        self._update_prev_next_buttons()
+
+    def _sync_playback_index(self):
+        if self.playback_queue and self.playback.current_playing_id in self.playback_queue:
+            self.playback_index = self.playback_queue.index(self.playback.current_playing_id)
+
+    def _update_prev_next_buttons(self):
+        if self.playback_index is None or not self.playback_queue:
+            self.player_bar.set_prev_next_state(False, False)
+            return
+        prev_enabled = self.playback_index > 0
+        next_enabled = self.playback_index < (len(self.playback_queue) - 1)
+        self.player_bar.set_prev_next_state(prev_enabled, next_enabled)
+
+    def play_prev_track(self):
+        self._sync_playback_index()
+        if self.playback_index is None or self.playback_index <= 0:
+            return
+        prev_track_id = self.playback_queue[self.playback_index - 1]
+        self.start_playback(prev_track_id)
+
+    def play_next_track(self, auto=False):
+        self._sync_playback_index()
+        if self.playback_index is None:
+            if auto:
+                self.player_bar.set_playing_state(False)
+            return
+        next_index = self.playback_index + 1
+        if next_index >= len(self.playback_queue):
+            if auto:
+                self.player_bar.set_playing_state(False)
+            return
+        next_track_id = self.playback_queue[next_index]
+        self.start_playback(next_track_id)
+
+    def _handle_track_end(self):
+        self.after(0, lambda: self.play_next_track(auto=True))
+
     def _load_lyrics_for_track(self, track_info, cover_img=None):
         """Fetch and load lyrics for the current track."""
         lyrics_window = self._ensure_lyrics_window()
@@ -327,7 +399,7 @@ class TidalApp(ctk.CTk):
     
     def _fetch_lyrics_worker(self, track_id):
         """Worker thread to fetch lyrics from API."""
-        print(f"[App] Fetching lyrics for track {track_id}...")
+        logger.info("Fetching lyrics for track %s", track_id)
         lyrics_data = self.api.get_lyrics(track_id)
         
         # Load lyrics in main thread
@@ -342,7 +414,7 @@ class TidalApp(ctk.CTk):
              return
 
         if item_id in downloads_window.active_downloads:
-            print(f"[App] Skipping download: {item_title} (Already in queue)")
+            logger.info("Skipping download (already queued): %s", item_title)
             return
 
         quality = self.quality_var.get()
@@ -350,13 +422,13 @@ class TidalApp(ctk.CTk):
 
     def _download_album_worker(self, album_id, album_title):
         downloads_window = self.downloads_window
-        print(f"[App] Fetching album {album_id}...")
+        logger.info("Fetching album %s for download", album_id)
         try:
             album_data = self.api.get_album(album_id)
             items = album_data.get("items", [])
             
             if not items:
-                print("[App] Album empty or failed to load items.")
+                logger.warning("Album %s returned no items", album_id)
                 return
 
             # Create folder
@@ -365,7 +437,7 @@ class TidalApp(ctk.CTk):
             if not os.path.exists(album_dir):
                 os.makedirs(album_dir)
                 
-            print(f"[App] Starting album download: {album_title} ({len(items)} tracks)")
+            logger.info("Starting album download: %s (%s tracks)", album_title, len(items))
             
             quality = self.quality_var.get()
             for item_obj in items:
@@ -385,14 +457,14 @@ class TidalApp(ctk.CTk):
                     # Download in parallel
                     threading.Thread(target=self._download_worker, args=(t_id, display, quality, album_dir)).start()
         except Exception as e:
-            print(f"Album Queue Error: {e}")
+            logger.exception("Album queue error for %s", album_id)
 
     def on_player_download(self, track_info):
         name = f"{track_info['artist']} - {track_info['title']}"
         self.start_download(track_info['id'], name)
 
     def _download_worker(self, track_id, filename, quality, output_dir=None):
-        print(f"[App] Downloading {filename}...")
+        logger.info("Downloading track %s (%s)", filename, track_id)
         target_dir = output_dir if output_dir else self.download_path
         
         downloads_window = self.downloads_window
@@ -425,13 +497,13 @@ class TidalApp(ctk.CTk):
                     cover_path = os.path.join(self.temp_dir, f"cover_{track_id}.jpg")
                     with open(cover_path, "wb") as f: f.write(r.content)
             except Exception as e:
-                print(f"[App] Cover download failed: {e}")
+                logger.exception("Cover download failed for track %s", track_id)
 
         stream_data = self.api.get_stream_url(track_id, quality=quality)
         final_url = self._resolve_stream_url(stream_data, track_id, is_playback=False)
         
         if not final_url:
-            print("[App] Download failed: No URL")
+            logger.error("Download failed for %s: no URL", filename)
             self.after(0, lambda: self.downloads_window.finish_download(track_id, False, "No URL"))
             if cover_path and os.path.exists(cover_path): os.remove(cover_path)
             return
@@ -444,8 +516,7 @@ class TidalApp(ctk.CTk):
             self.after(0, lambda: downloads_window.update_download(track_id, p))
         
         success, msg = self.api.download_stream(final_url, output_path, metadata, cover_path, progress_cb, duration=duration)
-        
-        print(f"[App] Download {'Complete' if success else 'Failed'}: {output_path}")
+        logger.info("Download %s: %s", "completed" if success else "failed", output_path)
         self.after(0, lambda: downloads_window.finish_download(track_id, success, msg))
 
         # Cleanup
@@ -462,7 +533,7 @@ class TidalApp(ctk.CTk):
                 pil_img = Image.open(BytesIO(r.content))
                 return ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(60, 60))
         except Exception as e:
-            print(f"Cover Load Error: {e}")
+            logger.exception("Cover load failed")
         return None
 
     def _format_quality_label(self, audio_quality, tags):
@@ -600,7 +671,7 @@ class TidalApp(ctk.CTk):
             self.playback.stop()
 
         # Cleanup temp files from proper temp directory
-        print("[Cleanup] Cleaning up temporary files...")
+        logger.info("Cleaning up temporary files")
         try:
             temp_dir = getattr(self, 'temp_dir', get_temp_dir())
             temp_patterns = [
@@ -612,11 +683,11 @@ class TidalApp(ctk.CTk):
                 for f in glob.glob(pattern):
                     try:
                         os.remove(f)
-                        print(f"[Cleanup] Removed {f}")
+                        logger.info("Removed temp file: %s", f)
                     except Exception as e:
-                        print(f"[Cleanup] Failed to remove {f}: {e}")
+                        logger.warning("Failed to remove temp file: %s", f, exc_info=True)
         except Exception as e:
-            print(f"[Cleanup] Error during cleanup: {e}")
+            logger.exception("Cleanup error")
                 
         self.destroy()
         os._exit(0)

@@ -2,11 +2,13 @@ import customtkinter as ctk
 from .icons import create_icon
 
 class PlayerBar(ctk.CTkFrame):
-    def __init__(self, master, playback_manager, on_download_click, on_lyrics_click=None, **kwargs):
+    def __init__(self, master, playback_manager, on_download_click, on_lyrics_click=None, on_prev_click=None, on_next_click=None, **kwargs):
         super().__init__(master, **kwargs)
         self.playback_manager = playback_manager
         self.on_download_click = on_download_click
         self.on_lyrics_click = on_lyrics_click
+        self.on_prev_click = on_prev_click
+        self.on_next_click = on_next_click
         
         self.configure(fg_color="#1a1a1a", height=100, corner_radius=10)
         self.grid_columnconfigure(1, weight=1)
@@ -60,13 +62,33 @@ class PlayerBar(ctk.CTkFrame):
         self.btns_frame = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
         self.btns_frame.pack()
         
-        self.btn_prev = ctk.CTkButton(self.btns_frame, text="", image=self.icon_prev, width=40, height=40, fg_color="transparent", border_width=1, state="disabled")
+        self.btn_prev = ctk.CTkButton(
+            self.btns_frame,
+            text="",
+            image=self.icon_prev,
+            width=40,
+            height=40,
+            fg_color="transparent",
+            border_width=1,
+            state="disabled",
+            command=self._on_prev_click
+        )
         self.btn_prev.pack(side="left", padx=5)
         
         self.btn_play = ctk.CTkButton(self.btns_frame, text="", image=self.icon_play, width=50, height=50, corner_radius=25, command=self.toggle_play)
         self.btn_play.pack(side="left", padx=10)
         
-        self.btn_next = ctk.CTkButton(self.btns_frame, text="", image=self.icon_next, width=40, height=40, fg_color="transparent", border_width=1, state="disabled")
+        self.btn_next = ctk.CTkButton(
+            self.btns_frame,
+            text="",
+            image=self.icon_next,
+            width=40,
+            height=40,
+            fg_color="transparent",
+            border_width=1,
+            state="disabled",
+            command=self._on_next_click
+        )
         self.btn_next.pack(side="left", padx=5)
         
         # Progress Bar
@@ -134,6 +156,21 @@ class PlayerBar(ctk.CTkFrame):
         """Handle lyrics button click."""
         if self.on_lyrics_click:
             self.on_lyrics_click()
+
+    def _on_prev_click(self):
+        if self.on_prev_click:
+            self.on_prev_click()
+
+    def _on_next_click(self):
+        if self.on_next_click:
+            self.on_next_click()
+
+    def set_prev_next_state(self, prev_enabled, next_enabled):
+        self.btn_prev.configure(state="normal" if prev_enabled else "disabled")
+        self.btn_next.configure(state="normal" if next_enabled else "disabled")
+
+    def set_playing_state(self, is_playing):
+        self.btn_play.configure(image=self.icon_pause if is_playing else self.icon_play)
 
     def update_track_info(self, track_info, cover_image):
         self.lbl_title.configure(text=track_info["title"])

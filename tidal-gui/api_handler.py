@@ -6,7 +6,10 @@ import os
 import re
 import sys
 import time
+import logging
 from requests.adapters import HTTPAdapter
+
+logger = logging.getLogger("kozyfy.api")
 
 class TidalApiHandler:
     def __init__(self, base_url="https://tidal-api.binimum.org"):
@@ -55,7 +58,7 @@ class TidalApiHandler:
         """
         try:
             params = {"s": query}
-            print(f"Searching: {self.base_url}/search/ with {params}")
+            logger.info("Searching tracks | query=%s", query)
             response = self._request("search/", params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
@@ -73,6 +76,7 @@ class TidalApiHandler:
             # Fallback for some wrappers
             return []
         except Exception as e:
+            logger.exception("Search tracks failed | query=%s", query)
             return {"error": str(e)}
 
     def search_albums(self, query):
@@ -82,7 +86,7 @@ class TidalApiHandler:
         """
         try:
             params = {"al": query}
-            print(f"Searching Albums: {self.base_url}/search/ with {params}")
+            logger.info("Searching albums | query=%s", query)
             response = self._request("search/", params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
@@ -96,6 +100,7 @@ class TidalApiHandler:
             
             return []
         except Exception as e:
+            logger.exception("Search albums failed | query=%s", query)
             return {"error": str(e)}
 
     def get_track_details(self, track_id):
@@ -112,8 +117,8 @@ class TidalApiHandler:
             if payload:
                 self._set_cached(cache_key, payload)
             return payload
-        except Exception as e:
-            print(f"Error fetching details: {e}")
+        except Exception:
+            logger.exception("Failed to fetch track details | track_id=%s", track_id)
             return {}
 
     def get_album(self, album_id):
@@ -126,7 +131,7 @@ class TidalApiHandler:
             if cached is not None:
                 return cached
             params = {"id": album_id}
-            print(f"Fetching Album: {self.base_url}/album/ with {params}")
+            logger.info("Fetching album | album_id=%s", album_id)
             response = self._request("album/", params=params, timeout=15)
             response.raise_for_status()
             data = response.json()
@@ -135,8 +140,8 @@ class TidalApiHandler:
             if payload:
                 self._set_cached(cache_key, payload)
             return payload
-        except Exception as e:
-            print(f"Error fetching album: {e}")
+        except Exception:
+            logger.exception("Failed to fetch album | album_id=%s", album_id)
             return {}
 
     def get_lyrics(self, track_id):
@@ -150,7 +155,7 @@ class TidalApiHandler:
             if cached is not None:
                 return cached
             params = {"id": track_id}
-            print(f"Fetching Lyrics: {self.base_url}/lyrics/ with {params}")
+            logger.info("Fetching lyrics | track_id=%s", track_id)
             response = self._request("lyrics/", params=params, timeout=10)
             
             if response.status_code == 404:
@@ -162,8 +167,9 @@ class TidalApiHandler:
             if payload:
                 self._set_cached(cache_key, payload)
             return payload
-        except Exception as e:
-            return {"error": str(e)}
+        except Exception:
+            logger.exception("Failed to fetch lyrics | track_id=%s", track_id)
+            return {"error": "Failed to fetch lyrics"}
 
     def get_stream_url(self, track_id, quality="HI_RES_LOSSLESS"):
         """
@@ -175,9 +181,9 @@ class TidalApiHandler:
                 "id": track_id,
                 "quality": quality
             }
-            print(f"Fetching Stream: {self.base_url}/track/ with {params}")
+            logger.info("Fetching stream | track_id=%s quality=%s", track_id, quality)
             response = self._request("track/", params=params, timeout=15)
-            print(f"Stream Response Status: {response.status_code}")
+            logger.debug("Stream response status: %s", response.status_code)
             
             if response.status_code == 403:
                 return {"error": "403 Forbidden. The API blocked the request. If using a public instance, try another or use your local hifi-api."}
@@ -185,7 +191,7 @@ class TidalApiHandler:
             response.raise_for_status()
             data = response.json()
             if self.debug:
-                print(f"Stream Data: {json.dumps(data, indent=2)}") # Debug print
+                logger.debug("Stream data: %s", json.dumps(data, indent=2))
             
             # Data usually mimics playbackinfo response
             
@@ -196,8 +202,9 @@ class TidalApiHandler:
             # The hifi-api /track/ endpoint returns `resp.json()` from Tidal.
             
             return data
-        except Exception as e:
-            return {"error": str(e)}
+        except Exception:
+            logger.exception("Failed to fetch stream | track_id=%s", track_id)
+            return {"error": "Failed to fetch stream"}
 
     def download_stream(self, stream_url, output_path, metadata=None, cover_path=None, update_callback=None, duration=None):
         """
