@@ -1,6 +1,8 @@
 import sys
 import os
 import logging
+import atexit
+import signal
 
 # Fix for bundled app - ensure proper import paths
 if getattr(sys, 'frozen', False):
@@ -61,6 +63,9 @@ class TidalApp(ctk.CTk):
         
         # Store temp directory for temp files
         self.temp_dir = get_temp_dir()
+        self._shutting_down = False
+        self._cleanup_temp_files(startup=True)
+        self._register_exit_handlers()
 
         self.playback = PlaybackManager()
         self.playback.set_on_track_end(self._handle_track_end)
@@ -126,6 +131,89 @@ class TidalApp(ctk.CTk):
             with open(config_file, 'w', encoding='utf-8') as f:
                 f.write(f"download_path={self.download_path}\n")
         except:
+            pass
+
+    def _register_exit_handlers(self):
+        try:
+            atexit.register(self._handle_exit, "atexit")
+        except Exception:
+            logger.exception("Failed to register atexit handler")
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                signal.signal(sig, self._signal_handler)
+            except Exception:
+                pass
+
+        if hasattr(signal, "SIGBREAK"):
+            try:
+                signal.signal(signal.SIGBREAK, self._signal_handler)
+            except Exception:
+                pass
+
+    def _signal_handler(self, signum, frame):
+        self._handle_exit(f"signal_{signum}")
+
+    def _handle_exit(self, reason="exit"):
+        try:
+            self._shutdown(reason=reason)
+        except Exception:
+            logger.exception("Shutdown error")
+
+    def _cleanup_temp_files(self, startup=False):
+        temp_dir = getattr(self, 'temp_dir', get_temp_dir())
+        temp_patterns = [
+            os.path.join(temp_dir, "temp_*.mpd"),
+            os.path.join(temp_dir, "temp_*.m3u8"),
+            os.path.join(temp_dir, "cover_*.jpg"),
+        ]
+        phase = "startup" if startup else "shutdown"
+        logger.info("Cleaning up temporary files (%s)", phase)
+        for pattern in temp_patterns:
+            for f in glob.glob(pattern):
+                try:
+                    os.remove(f)
+                    logger.info("Removed temp file: %s", f)
+                except Exception:
+                    logger.warning("Failed to remove temp file: %s", f, exc_info=True)
+
+    def _shutdown(self, reason="exit"):
+        if getattr(self, "_shutting_down", False):
+            return
+        self._shutting_down = True
+        logger.info("Shutdown requested (%s)", reason)
+
+        try:
+            with self._download_cancel_lock:
+                for cancel_event in self.download_cancel_events.values():
+                    cancel_event.set()
+        except Exception:
+            logger.exception("Failed to cancel downloads")
+
+        try:
+            if hasattr(self, 'playback'):
+                self.playback.shutdown()
+        except Exception:
+            logger.exception("Playback shutdown failed")
+
+        try:
+            if hasattr(self, 'api'):
+                self.api.shutdown()
+        except Exception:
+            logger.exception("API shutdown failed")
+
+        try:
+            self._cleanup_temp_files(startup=False)
+        except Exception:
+            logger.exception("Cleanup error")
+
+        try:
+            self.quit()
+        except Exception:
+            pass
+        try:
+            self.destroy()
+        except Exception:
             pass
 
     def _setup_layout(self):
@@ -229,7 +317,7 @@ class TidalApp(ctk.CTk):
         
         self.search_btn.configure(state="disabled")
         self.results_view.display_message(f"Searching for '{query}'...")
-        threading.Thread(target=self.run_search, args=(query,)).start()
+        threading.Thread(target=self.run_search, args=(query,), daemon=True).start()
 
     def run_search(self, query):
         search_type = self.search_type_var.get()
@@ -289,7 +377,7 @@ class TidalApp(ctk.CTk):
             return
         
         target_quality = self.quality_var.get()
-        threading.Thread(target=self._playback_worker, args=(track_id, target_quality)).start()
+        threading.Thread(target=self._playback_worker, args=(track_id, target_quality), daemon=True).start()
 
     def _playback_worker(self, track_id, quality):
         # 1. Fetch Metadata
@@ -420,7 +508,7 @@ class TidalApp(ctk.CTk):
         downloads_window = self._ensure_downloads_window()
 
         if item_type == "ALBUM":
-             threading.Thread(target=self._download_album_worker, args=(item_id, item_title)).start()
+             threading.Thread(target=self._download_album_worker, args=(item_id, item_title), daemon=True).start()
              return
 
         if item_id in downloads_window.active_downloads:
@@ -428,7 +516,7 @@ class TidalApp(ctk.CTk):
             return
 
         quality = self.quality_var.get()
-        threading.Thread(target=self._download_worker, args=(item_id, item_title, quality)).start()
+        threading.Thread(target=self._download_worker, args=(item_id, item_title, quality), daemon=True).start()
 
     def _download_album_worker(self, album_id, album_title):
         downloads_window = self.downloads_window
@@ -465,7 +553,7 @@ class TidalApp(ctk.CTk):
                 
                 if t_id and t_id not in downloads_window.active_downloads:
                     # Download in parallel
-                    threading.Thread(target=self._download_worker, args=(t_id, display, quality, album_dir)).start()
+                    threading.Thread(target=self._download_worker, args=(t_id, display, quality, album_dir), daemon=True).start()
         except Exception as e:
             logger.exception("Album queue error for %s", album_id)
 
@@ -706,31 +794,7 @@ class TidalApp(ctk.CTk):
         ctk.CTkButton(win, text="Save", command=save).pack(pady=20)
 
     def on_closing(self):
-        # Stop playback
-        if hasattr(self, 'playback'):
-            self.playback.stop()
-
-        # Cleanup temp files from proper temp directory
-        logger.info("Cleaning up temporary files")
-        try:
-            temp_dir = getattr(self, 'temp_dir', get_temp_dir())
-            temp_patterns = [
-                os.path.join(temp_dir, "temp_*.mpd"),
-                os.path.join(temp_dir, "temp_*.m3u8"),
-                os.path.join(temp_dir, "cover_*.jpg"),
-            ]
-            for pattern in temp_patterns:
-                for f in glob.glob(pattern):
-                    try:
-                        os.remove(f)
-                        logger.info("Removed temp file: %s", f)
-                    except Exception as e:
-                        logger.warning("Failed to remove temp file: %s", f, exc_info=True)
-        except Exception as e:
-            logger.exception("Cleanup error")
-                
-        self.destroy()
-        os._exit(0)
+        self._shutdown(reason="window_close")
 
 if __name__ == "__main__":
     app = TidalApp()

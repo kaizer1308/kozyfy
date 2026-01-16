@@ -40,9 +40,38 @@ class TidalApiHandler:
         self._search_cache_ttl_sec = 60
         self._cache_max_entries = 512
         self.debug = False
+        self._active_ffmpeg_processes = set()
+        self._ffmpeg_lock = threading.Lock()
 
     def set_base_url(self, url):
         self.base_url = url.rstrip("/")
+
+    def _register_ffmpeg_process(self, process):
+        if not process:
+            return
+        with self._ffmpeg_lock:
+            self._active_ffmpeg_processes.add(process)
+
+    def _unregister_ffmpeg_process(self, process):
+        if not process:
+            return
+        with self._ffmpeg_lock:
+            self._active_ffmpeg_processes.discard(process)
+
+    def shutdown(self):
+        with self._ffmpeg_lock:
+            processes = list(self._active_ffmpeg_processes)
+            self._active_ffmpeg_processes.clear()
+        for process in processes:
+            try:
+                if process.poll() is None:
+                    process.terminate()
+                    process.wait(timeout=5)
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
 
     def _request(self, path, params=None, headers=None, timeout=None):
         url = f"{self.base_url}/{path.lstrip('/')}"
@@ -325,6 +354,7 @@ class TidalApiHandler:
             output_path
         ])
 
+        process = None
         try:
             if update_callback:
                 update_callback(0) # Start with 0%
@@ -343,6 +373,7 @@ class TidalApiHandler:
                 errors='replace',
                 creationflags=creationflags
             )
+            self._register_ffmpeg_process(process)
 
             stderr_queue = queue.Queue()
             stderr_lines = deque(maxlen=200)
@@ -389,6 +420,18 @@ class TidalApiHandler:
             else:
                 err = "".join(stderr_lines)
                 return False, f"FFmpeg error: {err}"
-
         except Exception as e:
             return False, str(e)
+        finally:
+            self._unregister_ffmpeg_process(process)
+            try:
+                if process and process.poll() is None:
+                    process.terminate()
+                    process.wait(timeout=2)
+            except Exception:
+                pass
+            try:
+                if process and process.stderr:
+                    process.stderr.close()
+            except Exception:
+                pass

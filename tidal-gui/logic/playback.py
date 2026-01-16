@@ -184,6 +184,32 @@ class PlaybackManager:
         except:
             pass
         self.is_playing = False
+        self.current_playing_id = None
+        self.current_track_info = None
+
+    def shutdown(self):
+        if not self._vlc_available:
+            return
+        try:
+            if self.player:
+                self.player.stop()
+        except Exception:
+            pass
+        try:
+            if self.player:
+                self.player.release()
+        except Exception:
+            pass
+        try:
+            if self.instance:
+                self.instance.release()
+        except Exception:
+            pass
+        self.player = None
+        self.instance = None
+        self.is_playing = False
+        self.current_playing_id = None
+        self.current_track_info = None
 
     def set_volume(self, value):
         self.volume = int(value)
