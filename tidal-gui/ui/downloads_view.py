@@ -1,10 +1,12 @@
 import customtkinter as ctk
+from .theme import COLORS, FONTS, RADII
 
 class DownloadsWindow(ctk.CTkToplevel):
     def __init__(self, master, on_cancel=None, **kwargs):
         super().__init__(master, **kwargs)
         self.title("Downloads")
-        self.geometry("400x300")
+        self.geometry("440x320")
+        self.configure(fg_color=COLORS["bg"])
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -13,8 +15,18 @@ class DownloadsWindow(ctk.CTkToplevel):
         # Hide on close
         self.protocol("WM_DELETE_WINDOW", self.hide_window)
         
-        self.scroll_frame = ctk.CTkScrollableFrame(self, label_text="Active Downloads")
-        self.scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        self.scroll_frame = ctk.CTkScrollableFrame(
+            self,
+            label_text="Active Downloads",
+            label_font=FONTS["section"],
+            label_text_color=COLORS["text"],
+            label_fg_color=COLORS["panel"],
+            fg_color=COLORS["panel"],
+            corner_radius=RADII["card"],
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        self.scroll_frame.pack(fill="both", expand=True, padx=16, pady=16)
         
         self.active_downloads = {} # id -> widgets dict
         self.withdraw()
@@ -40,18 +52,33 @@ class DownloadsWindow(ctk.CTkToplevel):
             return # Already tracking
             
         # Create row
-        row = ctk.CTkFrame(self.scroll_frame)
-        row.pack(fill="x", pady=2)
+        row = ctk.CTkFrame(
+            self.scroll_frame,
+            fg_color=COLORS["panel_alt"],
+            corner_radius=RADII["button"],
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        row.pack(fill="x", pady=6, padx=6)
         
         # Filename
-        ctk.CTkLabel(row, text=filename, anchor="w", font=("Arial", 11, "bold")).pack(side="top", fill="x", padx=5, pady=(5,0))
+        ctk.CTkLabel(
+            row,
+            text=filename,
+            anchor="w",
+            font=FONTS["body_bold"],
+            text_color=COLORS["text"],
+        ).pack(side="top", fill="x", padx=10, pady=(8, 0))
         
         # Progress Container
         p_frame = ctk.CTkFrame(row, fg_color="transparent")
-        p_frame.pack(fill="x", padx=5, pady=5)
+        p_frame.pack(fill="x", padx=10, pady=8)
         
         # Progress Bar
-        pbar = ctk.CTkProgressBar(p_frame)
+        pbar = ctk.CTkProgressBar(
+            p_frame,
+            progress_color=COLORS["accent"],
+        )
         pbar.set(0)
         pbar.pack(side="left", fill="x", expand=True)
         
@@ -61,14 +88,26 @@ class DownloadsWindow(ctk.CTkToplevel):
             cancel_btn = ctk.CTkButton(
                 p_frame,
                 text="Cancel",
-                width=70,
-                command=lambda: self._handle_cancel(d_id)
+                width=76,
+                height=26,
+                command=lambda: self._handle_cancel(d_id),
+                fg_color=COLORS["panel_highlight"],
+                hover_color=COLORS["border"],
+                text_color=COLORS["text"],
+                corner_radius=RADII["button"],
+                font=FONTS["small_bold"],
             )
-            cancel_btn.pack(side="right", padx=5)
+            cancel_btn.pack(side="right", padx=6)
 
         # Status Label
-        lbl_status = ctk.CTkLabel(p_frame, text="0%", width=40, font=("Arial", 10))
-        lbl_status.pack(side="right", padx=5)
+        lbl_status = ctk.CTkLabel(
+            p_frame,
+            text="0%",
+            width=44,
+            font=FONTS["small"],
+            text_color=COLORS["text_muted"],
+        )
+        lbl_status.pack(side="right", padx=6)
         
         self.active_downloads[d_id] = {
             "row": row,
@@ -90,10 +129,10 @@ class DownloadsWindow(ctk.CTkToplevel):
         if d_id in self.active_downloads:
             widgets = self.active_downloads[d_id]
             status_text = "Done" if success else "Error"
-            status_color = "#00FF00" if success else "#FF0000"
+            status_color = COLORS["success"] if success else COLORS["danger"]
             if not success and message and "cancel" in message.lower():
                 status_text = "Cancelled"
-                status_color = "#FFA500"
+                status_color = COLORS["warning"]
 
             if success:
                 widgets["pbar"].set(1)

@@ -3,6 +3,7 @@ import re
 import logging
 from bisect import bisect_right
 from typing import List, Tuple, Optional, Callable
+from .theme import COLORS, FONTS, RADII
 
 logger = logging.getLogger("kozyfy.lyrics")
 
@@ -18,10 +19,10 @@ class LyricsLine(ctk.CTkLabel):
         
         self.configure(
             text=text,
-            font=("Arial", 14),
-            text_color="#888888",
+            font=FONTS["body"],
+            text_color=COLORS["text_muted"],
             anchor="center",
-            wraplength=450
+            wraplength=440
         )
     
     def set_active(self, active: bool):
@@ -29,25 +30,25 @@ class LyricsLine(ctk.CTkLabel):
         if active and not self.is_active:
             self.is_active = True
             self.configure(
-                font=("Arial", 18, "bold"),
-                text_color="#1DB954"  # Spotify-like green for active line
+                font=FONTS["section"],
+                text_color=COLORS["accent"]
             )
         elif not active and self.is_active:
             self.is_active = False
             self.configure(
-                font=("Arial", 14),
-                text_color="#888888"
+                font=FONTS["body"],
+                text_color=COLORS["text_muted"]
             )
     
     def set_upcoming(self):
         """Style for upcoming lines."""
         if not self.is_active:
-            self.configure(text_color="#AAAAAA")
+            self.configure(text_color=COLORS["text"])
     
     def set_passed(self):
         """Style for lines that have passed."""
         if not self.is_active:
-            self.configure(text_color="#666666")
+            self.configure(text_color=COLORS["text_faint"])
 
 
 class LyricsWindow(ctk.CTkToplevel):
@@ -58,7 +59,7 @@ class LyricsWindow(ctk.CTkToplevel):
         
         self.title("Lyrics")
         self.geometry("500x700")
-        self.configure(fg_color="#121212")
+        self.configure(fg_color=COLORS["bg"])
         
         # Callbacks
         self.get_progress = get_progress_callback
@@ -91,7 +92,7 @@ class LyricsWindow(ctk.CTkToplevel):
     def _create_ui(self):
         """Create the lyrics window UI."""
         # Header with track info
-        self.header_frame = ctk.CTkFrame(self, fg_color="#1a1a1a", height=80)
+        self.header_frame = ctk.CTkFrame(self, fg_color=COLORS["panel"], height=80)
         self.header_frame.pack(fill="x", padx=10, pady=10)
         self.header_frame.pack_propagate(False)
 
@@ -103,8 +104,9 @@ class LyricsWindow(ctk.CTkToplevel):
             text="No Art",
             width=60,
             height=60,
-            fg_color="#2a2a2a",
-            corner_radius=6
+            fg_color=COLORS["panel_highlight"],
+            text_color=COLORS["text_muted"],
+            corner_radius=RADII["button"]
         )
         self.cover_label.pack(side="left", padx=(0, 10))
 
@@ -114,8 +116,8 @@ class LyricsWindow(ctk.CTkToplevel):
         self.title_label = ctk.CTkLabel(
             self.header_text,
             text="No Track Playing",
-            font=("Arial", 16, "bold"),
-            text_color="white",
+            font=FONTS["subtitle"],
+            text_color=COLORS["text"],
             anchor="w"
         )
         self.title_label.pack(anchor="w")
@@ -123,8 +125,8 @@ class LyricsWindow(ctk.CTkToplevel):
         self.artist_label = ctk.CTkLabel(
             self.header_text,
             text="",
-            font=("Arial", 12),
-            text_color="#888888",
+            font=FONTS["body"],
+            text_color=COLORS["text_muted"],
             anchor="w"
         )
         self.artist_label.pack(anchor="w")
@@ -132,9 +134,9 @@ class LyricsWindow(ctk.CTkToplevel):
         # Scrollable lyrics container
         self.lyrics_container = ctk.CTkScrollableFrame(
             self,
-            fg_color="#121212",
-            scrollbar_button_color="#333333",
-            scrollbar_button_hover_color="#444444"
+            fg_color=COLORS["bg"],
+            scrollbar_button_color=COLORS["panel_highlight"],
+            scrollbar_button_hover_color=COLORS["border"]
         )
         self.lyrics_container.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         
@@ -147,12 +149,12 @@ class LyricsWindow(ctk.CTkToplevel):
         self.status_label = ctk.CTkLabel(
             self.lyrics_container,
             text="",
-            font=("Arial", 14),
-            text_color="#666666"
+            font=FONTS["body"],
+            text_color=COLORS["text_muted"]
         )
         
         # Bottom controls
-        self.controls_frame = ctk.CTkFrame(self, fg_color="#1a1a1a", height=50)
+        self.controls_frame = ctk.CTkFrame(self, fg_color=COLORS["panel"], height=50)
         self.controls_frame.pack(fill="x", padx=10, pady=(0, 10))
         
         self.auto_scroll_var = ctk.BooleanVar(value=True)
@@ -161,15 +163,19 @@ class LyricsWindow(ctk.CTkToplevel):
             text="Auto-scroll",
             variable=self.auto_scroll_var,
             command=self._toggle_auto_scroll,
-            font=("Arial", 11)
+            font=FONTS["small_bold"],
+            progress_color=COLORS["accent"],
+            button_color=COLORS["panel_highlight"],
+            button_hover_color=COLORS["border"],
+            text_color=COLORS["text"],
         )
         self.auto_scroll_switch.pack(side="left", padx=20, pady=10)
         
         self.sync_status = ctk.CTkLabel(
             self.controls_frame,
             text="",
-            font=("Arial", 11),
-            text_color="#666666"
+            font=FONTS["small"],
+            text_color=COLORS["text_muted"]
         )
         self.sync_status.pack(side="right", padx=20, pady=10)
     
@@ -236,11 +242,11 @@ class LyricsWindow(ctk.CTkToplevel):
         if subtitles:
             self._parse_synced_lyrics(subtitles)
             self.is_synced = True
-            self.sync_status.configure(text="⏱ Synced", text_color="#1DB954")
+            self.sync_status.configure(text="⏱ Synced", text_color=COLORS["accent"])
         elif plain_lyrics:
             self._display_plain_lyrics(plain_lyrics)
             self.is_synced = False
-            self.sync_status.configure(text="📝 Plain text", text_color="#888888")
+            self.sync_status.configure(text="📝 Plain text", text_color=COLORS["text_muted"])
         else:
             self._show_no_lyrics("Lyrics not available")
     
@@ -273,7 +279,7 @@ class LyricsWindow(ctk.CTkToplevel):
         self._clear_lyrics()
         self.status_label.configure(text=message)
         self.status_label.pack(pady=50)
-        self.sync_status.configure(text="", text_color="#666666")
+        self.sync_status.configure(text="", text_color=COLORS["text_muted"])
         self.is_synced = False
     
     def _parse_synced_lyrics(self, subtitles: str):

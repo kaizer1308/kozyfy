@@ -1,8 +1,16 @@
 import customtkinter as ctk
+from .theme import COLORS, FONTS, RADII
 
 class SearchResultsView(ctk.CTkScrollableFrame):
     def __init__(self, master, on_play, on_download, **kwargs):
-        super().__init__(master, label_text="Results", **kwargs)
+        super().__init__(
+            master,
+            label_text="Results",
+            label_font=FONTS["section"],
+            label_text_color=COLORS["text"],
+            label_fg_color=COLORS["panel"],
+            **kwargs,
+        )
         self.on_play = on_play
         self.on_download = on_download
         self._pending_items = []
@@ -19,7 +27,12 @@ class SearchResultsView(ctk.CTkScrollableFrame):
 
     def display_message(self, message):
         self.clear()
-        ctk.CTkLabel(self, text=message).pack(pady=20)
+        ctk.CTkLabel(
+            self,
+            text=message,
+            text_color=COLORS["text_muted"],
+            font=FONTS["body"],
+        ).pack(pady=20)
 
     def populate(self, items):
         self.clear()
@@ -86,20 +99,32 @@ class SearchResultsView(ctk.CTkScrollableFrame):
         quality_detail = " • ".join(quality_parts) if quality_parts else "Unknown"
              
         # Quality Color
-        q_color = "gray"
+        q_color = COLORS["text_muted"]
         if "Hi-Res" in display_quality or "Master" in display_quality:
-            q_color = "#FFA500" # Gold/Orange
+            q_color = COLORS["warning"]
         elif "Lossless" in display_quality:
-            q_color = "#00BFFF" # Blue
+            q_color = COLORS["accent_alt"]
 
-        row_frame = ctk.CTkFrame(self)
-        row_frame.pack(fill="x", pady=2)
+        row_frame = ctk.CTkFrame(
+            self,
+            fg_color=COLORS["panel_alt"],
+            corner_radius=RADII["button"],
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        row_frame.pack(fill="x", pady=6, padx=6)
         
         # Info Group
         info_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
-        info_frame.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+        info_frame.pack(side="left", padx=12, pady=10, fill="x", expand=True)
         
-        title_lbl = ctk.CTkLabel(info_frame, text=title, font=("Arial", 13, "bold"), anchor="w")
+        title_lbl = ctk.CTkLabel(
+            info_frame,
+            text=title,
+            font=FONTS["subtitle"],
+            text_color=COLORS["text"],
+            anchor="w",
+        )
         title_lbl.pack(fill="x")
         
         if item_type == "ALBUM":
@@ -107,14 +132,20 @@ class SearchResultsView(ctk.CTkScrollableFrame):
             tracks_count = item.get("numberOfTracks", 0)
             sub_text = f"Album • {artist} • {tracks_count} Tracks • {release_date}"
             
-            sub_lbl = ctk.CTkLabel(info_frame, text=sub_text, font=("Arial", 11), text_color="gray", anchor="w")
+            sub_lbl = ctk.CTkLabel(
+                info_frame,
+                text=sub_text,
+                font=FONTS["body"],
+                text_color=COLORS["text_muted"],
+                anchor="w",
+            )
             sub_lbl.pack(fill="x")
             
             qual_lbl = ctk.CTkLabel(
                 row_frame,
                 text=quality_detail,
                 text_color=q_color,
-                font=("Arial", 11, "bold"),
+                font=FONTS["small_bold"],
                 width=150,
                 anchor="e",
                 justify="right",
@@ -123,9 +154,19 @@ class SearchResultsView(ctk.CTkScrollableFrame):
             qual_lbl.pack(side="right", padx=(5, 10))
 
             # Download Button (Album)
-            dl_btn = ctk.CTkButton(row_frame, text="Download", width=80, height=28,
-                                   command=lambda: self.on_download(item_id, f"{artist} - {title}", "ALBUM"))
-            dl_btn.pack(side="right", padx=10, pady=5)
+            dl_btn = ctk.CTkButton(
+                row_frame,
+                text="Download",
+                width=90,
+                height=30,
+                fg_color=COLORS["panel_highlight"],
+                hover_color=COLORS["border"],
+                text_color=COLORS["text"],
+                corner_radius=RADII["button"],
+                font=FONTS["small_bold"],
+                command=lambda: self.on_download(item_id, f"{artist} - {title}", "ALBUM"),
+            )
+            dl_btn.pack(side="right", padx=12, pady=10)
             
         else: # TRACK
             album = item.get("album", {}).get("title", "Unknown Album")
@@ -137,14 +178,20 @@ class SearchResultsView(ctk.CTkScrollableFrame):
             time_str = f"{mins}:{secs:02d}"
 
             sub_text = f"{artist} • {album} • {time_str}"
-            sub_lbl = ctk.CTkLabel(info_frame, text=sub_text, font=("Arial", 11), text_color="gray", anchor="w")
+            sub_lbl = ctk.CTkLabel(
+                info_frame,
+                text=sub_text,
+                font=FONTS["body"],
+                text_color=COLORS["text_muted"],
+                anchor="w",
+            )
             sub_lbl.pack(fill="x")
             
             qual_lbl = ctk.CTkLabel(
                 row_frame,
                 text=quality_detail,
                 text_color=q_color,
-                font=("Arial", 11, "bold"),
+                font=FONTS["small_bold"],
                 width=150,
                 anchor="e",
                 justify="right",
@@ -153,11 +200,31 @@ class SearchResultsView(ctk.CTkScrollableFrame):
             qual_lbl.pack(side="right", padx=(5, 10))
 
             # Download Button
-            dl_btn = ctk.CTkButton(row_frame, text="Download", width=80, height=28,
-                                   command=lambda: self.on_download(item_id, f"{artist} - {title}", "TRACK"))
-            dl_btn.pack(side="right", padx=10, pady=5)
+            dl_btn = ctk.CTkButton(
+                row_frame,
+                text="Download",
+                width=90,
+                height=30,
+                fg_color=COLORS["panel_highlight"],
+                hover_color=COLORS["border"],
+                text_color=COLORS["text"],
+                corner_radius=RADII["button"],
+                font=FONTS["small_bold"],
+                command=lambda: self.on_download(item_id, f"{artist} - {title}", "TRACK"),
+            )
+            dl_btn.pack(side="right", padx=12, pady=10)
 
             # Play Button
-            play_btn = ctk.CTkButton(row_frame, text="Play", width=60, height=28, fg_color="green",
-                                     command=lambda: self.on_play(item_id))
-            play_btn.pack(side="right", padx=5)
+            play_btn = ctk.CTkButton(
+                row_frame,
+                text="Play",
+                width=70,
+                height=30,
+                fg_color=COLORS["accent"],
+                hover_color=COLORS["accent_alt"],
+                text_color=COLORS["bg"],
+                corner_radius=RADII["button"],
+                font=FONTS["small_bold"],
+                command=lambda: self.on_play(item_id),
+            )
+            play_btn.pack(side="right", padx=6, pady=10)

@@ -1,5 +1,6 @@
 import customtkinter as ctk
 from .icons import create_icon
+from .theme import COLORS, FONTS, RADII
 
 class PlayerBar(ctk.CTkFrame):
     def __init__(self, master, playback_manager, on_download_click, on_lyrics_click=None, on_prev_click=None, on_next_click=None, **kwargs):
@@ -10,7 +11,7 @@ class PlayerBar(ctk.CTkFrame):
         self.on_prev_click = on_prev_click
         self.on_next_click = on_next_click
         
-        self.configure(fg_color="#1a1a1a", height=100, corner_radius=10)
+        self.configure(fg_color=COLORS["panel"], height=108, corner_radius=RADII["card"])
         self.grid_columnconfigure(1, weight=1)
 
         self._create_ui()
@@ -33,19 +34,48 @@ class PlayerBar(ctk.CTkFrame):
         self.info_frame_player = ctk.CTkFrame(self, fg_color="transparent")
         self.info_frame_player.grid(row=0, column=0, padx=10, pady=10, sticky="w")
         
-        self.art_label = ctk.CTkLabel(self.info_frame_player, text="🎵", width=60, height=60, fg_color="#333", corner_radius=5)
+        self.art_label = ctk.CTkLabel(
+            self.info_frame_player,
+            text="🎵",
+            width=60,
+            height=60,
+            fg_color=COLORS["panel_highlight"],
+            corner_radius=RADII["button"],
+            text_color=COLORS["text"],
+        )
         self.art_label.pack(side="left", padx=(0, 10))
         
         self.text_frame_player = ctk.CTkFrame(self.info_frame_player, fg_color="transparent")
         self.text_frame_player.pack(side="left")
         
-        self.lbl_title = ctk.CTkLabel(self.text_frame_player, text="Not Playing", font=("Arial", 14, "bold"), anchor="w", width=200)
+        self.lbl_title = ctk.CTkLabel(
+            self.text_frame_player,
+            text="Not Playing",
+            font=FONTS["subtitle"],
+            text_color=COLORS["text"],
+            anchor="w",
+            width=220,
+        )
         self.lbl_title.pack(anchor="w")
         
-        self.lbl_artist = ctk.CTkLabel(self.text_frame_player, text="...", font=("Arial", 12), text_color="gray", anchor="w", width=200)
+        self.lbl_artist = ctk.CTkLabel(
+            self.text_frame_player,
+            text="...",
+            font=FONTS["body"],
+            text_color=COLORS["text_muted"],
+            anchor="w",
+            width=220,
+        )
         self.lbl_artist.pack(anchor="w")
 
-        self.lbl_meta = ctk.CTkLabel(self.text_frame_player, text="", font=("Arial", 10), text_color="#777777", anchor="w", width=240)
+        self.lbl_meta = ctk.CTkLabel(
+            self.text_frame_player,
+            text="",
+            font=FONTS["small"],
+            text_color=COLORS["text_faint"],
+            anchor="w",
+            width=260,
+        )
         self.lbl_meta.pack(anchor="w")
 
         # -- Center: Controls & Progress --
@@ -69,13 +99,25 @@ class PlayerBar(ctk.CTkFrame):
             width=40,
             height=40,
             fg_color="transparent",
+            hover_color=COLORS["panel_highlight"],
             border_width=1,
+            border_color=COLORS["border"],
             state="disabled",
             command=self._on_prev_click
         )
         self.btn_prev.pack(side="left", padx=5)
         
-        self.btn_play = ctk.CTkButton(self.btns_frame, text="", image=self.icon_play, width=50, height=50, corner_radius=25, command=self.toggle_play)
+        self.btn_play = ctk.CTkButton(
+            self.btns_frame,
+            text="",
+            image=self.icon_play,
+            width=52,
+            height=52,
+            corner_radius=26,
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_alt"],
+            command=self.toggle_play,
+        )
         self.btn_play.pack(side="left", padx=10)
         
         self.btn_next = ctk.CTkButton(
@@ -85,7 +127,9 @@ class PlayerBar(ctk.CTkFrame):
             width=40,
             height=40,
             fg_color="transparent",
+            hover_color=COLORS["panel_highlight"],
             border_width=1,
+            border_color=COLORS["border"],
             state="disabled",
             command=self._on_next_click
         )
@@ -95,14 +139,36 @@ class PlayerBar(ctk.CTkFrame):
         self.progress_frame = ctk.CTkFrame(self.controls_frame, fg_color="transparent")
         self.progress_frame.pack(fill="x", pady=(5,0))
         
-        self.lbl_current_time = ctk.CTkLabel(self.progress_frame, text="0:00", font=("Arial", 10), width=30)
+        self.lbl_current_time = ctk.CTkLabel(
+            self.progress_frame,
+            text="0:00",
+            font=FONTS["small"],
+            text_color=COLORS["text_muted"],
+            width=36,
+        )
         self.lbl_current_time.pack(side="left", padx=5)
         
-        self.slider_progress = ctk.CTkSlider(self.progress_frame, width=300, height=10, from_=0, to=1, command=self.on_seek)
+        self.slider_progress = ctk.CTkSlider(
+            self.progress_frame,
+            width=320,
+            height=12,
+            from_=0,
+            to=1,
+            command=self.on_seek,
+            progress_color=COLORS["accent"],
+            button_color=COLORS["accent"],
+            button_hover_color=COLORS["accent_alt"],
+        )
         self.slider_progress.set(0)
         self.slider_progress.pack(side="left", fill="x", expand=True)
         
-        self.lbl_total_time = ctk.CTkLabel(self.progress_frame, text="0:00", font=("Arial", 10), width=30)
+        self.lbl_total_time = ctk.CTkLabel(
+            self.progress_frame,
+            text="0:00",
+            font=FONTS["small"],
+            text_color=COLORS["text_muted"],
+            width=36,
+        )
         self.lbl_total_time.pack(side="left", padx=5)
 
         # -- Right: Volume & Extras --
@@ -118,20 +184,48 @@ class PlayerBar(ctk.CTkFrame):
             width=36, 
             height=36, 
             fg_color="transparent",
-            hover_color="#333333",
+            hover_color=COLORS["panel_highlight"],
             border_width=1,
+            border_color=COLORS["border"],
             state="disabled", 
             command=self._on_lyrics_click
         )
         self.btn_lyrics.pack(side="left", padx=5)
         
-        self.btn_dl_current = ctk.CTkButton(self.extras_frame, text="Download", width=80, height=24, state="disabled", command=self.download_current_track)
+        self.btn_dl_current = ctk.CTkButton(
+            self.extras_frame,
+            text="Download",
+            width=96,
+            height=30,
+            state="disabled",
+            fg_color=COLORS["panel_highlight"],
+            hover_color=COLORS["border"],
+            text_color=COLORS["text"],
+            corner_radius=RADII["button"],
+            font=FONTS["small_bold"],
+            command=self.download_current_track,
+        )
         self.btn_dl_current.pack(side="left", padx=10)
         
-        self.lbl_vol = ctk.CTkLabel(self.extras_frame, text="🔊", font=("Arial", 12))
+        self.lbl_vol = ctk.CTkLabel(
+            self.extras_frame,
+            text="🔊",
+            font=FONTS["body"],
+            text_color=COLORS["text_muted"],
+        )
         self.lbl_vol.pack(side="left", padx=5)
         
-        self.slider_vol = ctk.CTkSlider(self.extras_frame, width=100, height=15, from_=0, to=100, command=self.set_volume)
+        self.slider_vol = ctk.CTkSlider(
+            self.extras_frame,
+            width=110,
+            height=14,
+            from_=0,
+            to=100,
+            command=self.set_volume,
+            progress_color=COLORS["accent_alt"],
+            button_color=COLORS["accent_alt"],
+            button_hover_color=COLORS["accent"],
+        )
         self.slider_vol.set(100)
         self.slider_vol.pack(side="left")
 

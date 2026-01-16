@@ -42,6 +42,7 @@ from ui.player_bar import PlayerBar
 from ui.search_view import SearchResultsView
 from ui.downloads_view import DownloadsWindow
 from ui.lyrics_view import LyricsWindow
+from ui.theme import COLORS, FONTS, RADII
 from utils.paths import get_temp_dir, get_default_download_dir, get_config_dir
 from utils.dependencies import check_all_dependencies, get_missing_dependencies_message
 
@@ -54,6 +55,7 @@ class TidalApp(ctk.CTk):
 
         self.title("Kozyfy")
         self.geometry("1000x800")
+        self.configure(fg_color=COLORS["bg"])
         
         self.api = TidalApiHandler()
         self.api.set_base_url("https://triton.squid.wtf")
@@ -229,49 +231,146 @@ class TidalApp(ctk.CTk):
         self._create_player_bar()
 
     def _create_top_bar(self):
-        self.top_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.top_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+        self.top_frame = ctk.CTkFrame(
+            self,
+            fg_color=COLORS["panel"],
+            corner_radius=RADII["card"],
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        self.top_frame.grid(row=0, column=0, padx=16, pady=(16, 8), sticky="ew")
 
         # Settings Button (Left)
-        ctk.CTkButton(self.top_frame, text="Settings", width=100, command=self.open_settings).pack(side="left", padx=5)
+        ctk.CTkButton(
+            self.top_frame,
+            text="Settings",
+            width=110,
+            height=34,
+            command=self.open_settings,
+            fg_color=COLORS["panel_highlight"],
+            hover_color=COLORS["border"],
+            text_color=COLORS["text"],
+            corner_radius=RADII["button"],
+            font=FONTS["body_bold"],
+        ).pack(side="left", padx=(12, 6), pady=10)
 
         # Downloads Button (Left)
-        ctk.CTkButton(self.top_frame, text="Downloads", width=100, command=self.show_downloads_window).pack(side="left", padx=5)
+        ctk.CTkButton(
+            self.top_frame,
+            text="Downloads",
+            width=120,
+            height=34,
+            command=self.show_downloads_window,
+            fg_color=COLORS["panel_highlight"],
+            hover_color=COLORS["border"],
+            text_color=COLORS["text"],
+            corner_radius=RADII["button"],
+            font=FONTS["body_bold"],
+        ).pack(side="left", padx=6, pady=10)
 
         # Filter Switch (Rightmost)
         self.filter_var = ctk.BooleanVar(value=False)
-        ctk.CTkSwitch(self.top_frame, text="Filter Results", variable=self.filter_var, command=self.render_results).pack(side="right", padx=5)
+        ctk.CTkSwitch(
+            self.top_frame,
+            text="Filter Results",
+            variable=self.filter_var,
+            command=self.render_results,
+            progress_color=COLORS["accent"],
+            button_color=COLORS["panel_highlight"],
+            button_hover_color=COLORS["border"],
+            text_color=COLORS["text"],
+            font=FONTS["small_bold"],
+        ).pack(side="right", padx=(6, 14), pady=10)
 
         # Quality Selection (Next to switch)
         self.quality_var = ctk.StringVar(value="HI_RES_LOSSLESS")
-        ctk.CTkComboBox(self.top_frame, 
-                        values=["HI_RES_LOSSLESS", "LOSSLESS", "HIGH", "LOW"],
-                        variable=self.quality_var,
-                        width=150,
-                        command=self.render_results).pack(side="right", padx=10)
+        ctk.CTkComboBox(
+            self.top_frame,
+            values=["HI_RES_LOSSLESS", "LOSSLESS", "HIGH", "LOW"],
+            variable=self.quality_var,
+            width=170,
+            command=self.render_results,
+            fg_color=COLORS["panel_alt"],
+            border_color=COLORS["border"],
+            button_color=COLORS["panel_highlight"],
+            button_hover_color=COLORS["border"],
+            text_color=COLORS["text"],
+            dropdown_fg_color=COLORS["panel"],
+            dropdown_hover_color=COLORS["panel_highlight"],
+            dropdown_text_color=COLORS["text"],
+            font=FONTS["small_bold"],
+            dropdown_font=FONTS["small"],
+            corner_radius=RADII["button"],
+        ).pack(side="right", padx=8, pady=10)
 
     def _create_search_bar(self):
-        self.search_frame = ctk.CTkFrame(self)
-        self.search_frame.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="ew")
+        self.search_frame = ctk.CTkFrame(
+            self,
+            fg_color=COLORS["panel"],
+            corner_radius=RADII["card"],
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        self.search_frame.grid(row=1, column=0, padx=16, pady=(0, 12), sticky="ew")
 
         # Search Type Selector
         self.search_type_var = ctk.StringVar(value="Tracks")
         self.search_type_combo = ctk.CTkComboBox(self.search_frame, 
                                                  values=["Tracks", "Albums"],
                                                  variable=self.search_type_var,
-                                                 width=100)
-        self.search_type_combo.pack(side="left", padx=(10, 0), pady=10)
+                                                 width=120,
+                                                 fg_color=COLORS["panel_alt"],
+                                                 border_color=COLORS["border"],
+                                                 button_color=COLORS["panel_highlight"],
+                                                 button_hover_color=COLORS["border"],
+                                                 text_color=COLORS["text"],
+                                                 dropdown_fg_color=COLORS["panel"],
+                                                 dropdown_hover_color=COLORS["panel_highlight"],
+                                                 dropdown_text_color=COLORS["text"],
+                                                 font=FONTS["small_bold"],
+                                                 dropdown_font=FONTS["small"],
+                                                 corner_radius=RADII["button"])
+        self.search_type_combo.pack(side="left", padx=(12, 0), pady=12)
 
-        self.search_entry = ctk.CTkEntry(self.search_frame, placeholder_text="Enter artist, title or album...")
-        self.search_entry.pack(side="left", fill="x", expand=True, padx=10, pady=10)
+        self.search_entry = ctk.CTkEntry(
+            self.search_frame,
+            placeholder_text="Enter artist, title or album...",
+            fg_color=COLORS["panel_alt"],
+            text_color=COLORS["text"],
+            placeholder_text_color=COLORS["text_faint"],
+            border_color=COLORS["border"],
+            font=FONTS["body"],
+            height=36,
+            corner_radius=RADII["button"],
+        )
+        self.search_entry.pack(side="left", fill="x", expand=True, padx=12, pady=12)
         self.search_entry.bind("<Return>", lambda event: self.start_search())
 
-        self.search_btn = ctk.CTkButton(self.search_frame, text="Search", command=self.start_search)
-        self.search_btn.pack(side="right", padx=10)
+        self.search_btn = ctk.CTkButton(
+            self.search_frame,
+            text="Search",
+            command=self.start_search,
+            width=110,
+            height=36,
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_alt"],
+            text_color=COLORS["bg"],
+            corner_radius=RADII["button"],
+            font=FONTS["body_bold"],
+        )
+        self.search_btn.pack(side="right", padx=(0, 12), pady=12)
 
     def _create_results_area(self):
-        self.results_view = SearchResultsView(self, on_play=self.start_playback, on_download=self.start_download)
-        self.results_view.grid(row=2, column=0, padx=10, pady=5, sticky="nsew")
+        self.results_view = SearchResultsView(
+            self,
+            on_play=self.start_playback,
+            on_download=self.start_download,
+            fg_color=COLORS["panel"],
+            corner_radius=RADII["card"],
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        self.results_view.grid(row=2, column=0, padx=16, pady=6, sticky="nsew")
 
     def _create_player_bar(self):
         self.player_bar = PlayerBar(
@@ -282,7 +381,7 @@ class TidalApp(ctk.CTk):
             on_prev_click=self.play_prev_track,
             on_next_click=self.play_next_track
         )
-        self.player_bar.grid(row=3, column=0, padx=10, pady=10, sticky="ew")
+        self.player_bar.grid(row=3, column=0, padx=16, pady=(0, 16), sticky="ew")
 
     def _ensure_downloads_window(self):
         if self.downloads_window is None or not self.downloads_window.winfo_exists():
@@ -762,36 +861,99 @@ class TidalApp(ctk.CTk):
         # Simplified for brevity
         win = ctk.CTkToplevel(self)
         win.title("Settings")
-        win.geometry("400x250")
-        
+        win.geometry("440x320")
+        win.configure(fg_color=COLORS["bg"])
+        win.resizable(False, False)
+
+        content = ctk.CTkFrame(
+            win,
+            fg_color=COLORS["panel"],
+            corner_radius=RADII["card"],
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        content.pack(fill="both", expand=True, padx=16, pady=16)
+
         # API URL
-        ctk.CTkLabel(win, text="API URL:").pack(pady=5)
-        ent = ctk.CTkEntry(win, width=300)
+        ctk.CTkLabel(
+            content,
+            text="API URL",
+            font=FONTS["subtitle"],
+            text_color=COLORS["text"],
+        ).pack(pady=(16, 6))
+        ent = ctk.CTkEntry(
+            content,
+            width=340,
+            fg_color=COLORS["panel_alt"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text"],
+            font=FONTS["body"],
+            corner_radius=RADII["button"],
+        )
         ent.insert(0, self.api.base_url)
-        ent.pack(pady=5)
+        ent.pack(pady=(0, 12))
 
         # Download Path
-        ctk.CTkLabel(win, text="Download Location:").pack(pady=5)
-        path_frame = ctk.CTkFrame(win, fg_color="transparent")
-        path_frame.pack(pady=5, fill="x", padx=20)
-        
-        path_label = ctk.CTkLabel(path_frame, text=self.download_path, anchor="w")
-        path_label.pack(side="left", fill="x", expand=True, padx=5)
-        
+        ctk.CTkLabel(
+            content,
+            text="Download Location",
+            font=FONTS["subtitle"],
+            text_color=COLORS["text"],
+        ).pack(pady=(8, 6))
+        path_frame = ctk.CTkFrame(
+            content,
+            fg_color=COLORS["panel_alt"],
+            corner_radius=RADII["button"],
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        path_frame.pack(pady=(0, 14), fill="x", padx=20)
+
+        path_label = ctk.CTkLabel(
+            path_frame,
+            text=self.download_path,
+            anchor="w",
+            text_color=COLORS["text_muted"],
+            font=FONTS["small"],
+        )
+        path_label.pack(side="left", fill="x", expand=True, padx=8)
+
         def choose_folder():
             d = filedialog.askdirectory(initialdir=self.download_path)
             if d:
                 self.download_path = d
                 path_label.configure(text=d)
-        
-        ctk.CTkButton(path_frame, text="...", width=40, command=choose_folder).pack(side="right", padx=5)
+
+        ctk.CTkButton(
+            path_frame,
+            text="Browse",
+            width=80,
+            height=28,
+            command=choose_folder,
+            fg_color=COLORS["panel_highlight"],
+            hover_color=COLORS["border"],
+            text_color=COLORS["text"],
+            corner_radius=RADII["button"],
+            font=FONTS["small_bold"],
+        ).pack(side="right", padx=6, pady=6)
 
         def save():
             self.api.set_base_url(ent.get())
             self._save_download_path()  # Persist download path
             win.destroy()
-        
-        ctk.CTkButton(win, text="Save", command=save).pack(pady=20)
+
+        ctk.CTkButton(
+            content,
+            text="Save Settings",
+            command=save,
+            width=160,
+            height=36,
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_alt"],
+            text_color=COLORS["bg"],
+            corner_radius=RADII["button"],
+            font=FONTS["body_bold"],
+        ).pack(pady=(0, 18))
 
     def on_closing(self):
         self._shutdown(reason="window_close")
