@@ -54,7 +54,7 @@ class LyricsLine(ctk.CTkLabel):
 class LyricsWindow(ctk.CTkToplevel):
     """Window displaying synchronized lyrics with animations."""
     
-    def __init__(self, master, get_progress_callback: Callable, **kwargs):
+    def __init__(self, master, get_progress_callback: Callable, seek_callback: Optional[Callable[[float], None]] = None, **kwargs):
         super().__init__(master, **kwargs)
         
         self.title("Lyrics")
@@ -63,6 +63,7 @@ class LyricsWindow(ctk.CTkToplevel):
         
         # Callbacks
         self.get_progress = get_progress_callback
+        self.seek_callback = seek_callback
         
         # Lyrics data
         self.lyrics_lines: List[LyricsLine] = []
@@ -240,12 +241,12 @@ class LyricsWindow(ctk.CTkToplevel):
         plain_lyrics = lyrics_data.get("lyrics")
         
         if subtitles:
-            self._parse_synced_lyrics(subtitles)
             self.is_synced = True
+            self._parse_synced_lyrics(subtitles)
             self.sync_status.configure(text="⏱ Synced", text_color=COLORS["accent"])
         elif plain_lyrics:
-            self._display_plain_lyrics(plain_lyrics)
             self.is_synced = False
+            self._display_plain_lyrics(plain_lyrics)
             self.sync_status.configure(text="📝 Plain text", text_color=COLORS["text_muted"])
         else:
             self._show_no_lyrics("Lyrics not available")
@@ -352,6 +353,9 @@ class LyricsWindow(ctk.CTkToplevel):
             )
             line_widget.pack(pady=8, padx=20, fill="x")
             self.lyrics_lines.append(line_widget)
+            if self.is_synced and self.seek_callback:
+                line_widget.configure(cursor="hand2")
+                line_widget.bind("<Button-1>", lambda event, ts=timestamp_ms: self._on_line_click(ts))
         
         # Add spacer at bottom for scrolling past last line
         spacer_bottom = ctk.CTkFrame(self.lyrics_container, fg_color="transparent", height=200)
@@ -377,6 +381,19 @@ class LyricsWindow(ctk.CTkToplevel):
         
         # Schedule next update
         self.after(delay_ms, self._start_updater)
+
+    def _on_line_click(self, timestamp_ms: int):
+        """Seek playback to the clicked lyric timestamp."""
+        if not self.is_synced or not self.seek_callback:
+            return
+        try:
+            _, length_ms, _ = self.get_progress()
+            if length_ms <= 0:
+                return
+            target_ms = max(0, min(timestamp_ms, length_ms))
+            self.seek_callback(target_ms / length_ms)
+        except Exception:
+            logger.exception("Lyrics seek error")
 
     def _get_next_update_delay(self, current_ms: int, next_index: int) -> int:
         """Compute adaptive update interval based on next lyric timestamp."""

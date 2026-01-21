@@ -390,7 +390,7 @@ class TidalApp(ctk.CTk):
 
     def _ensure_lyrics_window(self):
         if self.lyrics_window is None or not self.lyrics_window.winfo_exists():
-            self.lyrics_window = LyricsWindow(self, self.playback.get_progress)
+            self.lyrics_window = LyricsWindow(self, self.playback.get_progress, self.playback.seek)
         return self.lyrics_window
 
     def show_downloads_window(self):
