@@ -1,0 +1,54 @@
+         793871 function calls (793869 primitive calls) in 0.511 seconds
+
+   Ordered by: internal time
+   List reduced from 48 to 30 due to restriction <30>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+     1488    0.362    0.000    0.429    0.000 {built-in method builtins.sorted}
+   763344    0.068    0.000    0.068    0.000 C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\api_handler.py:111(<lambda>)
+     2000    0.049    0.000    0.489    0.000 C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\api_handler.py:101(_set_cached)
+        1    0.018    0.018    0.511    0.511 C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\tools\perf_profile.py:122(_workload)
+     2978    0.003    0.000    0.003    0.000 {method 'items' of 'dict' objects}
+     4990    0.003    0.000    0.003    0.000 {built-in method builtins.len}
+     2000    0.002    0.000    0.003    0.000 C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\api_handler.py:89(_get_cached)
+     4000    0.002    0.000    0.002    0.000 {method '__exit__' of '_thread.lock' objects}
+     5488    0.001    0.000    0.001    0.000 {built-in method time.monotonic}
+     1488    0.001    0.000    0.001    0.000 {method 'pop' of 'dict' objects}
+     4000    0.001    0.000    0.001    0.000 {method '__enter__' of '_thread.lock' objects}
+     2000    0.000    0.000    0.000    0.000 {method 'get' of 'dict' objects}
+        1    0.000    0.000    0.001    0.001 C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\api_handler.py:18(__init__)
+        1    0.000    0.000    0.000    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\http\cookiejar.py:1754(__iter__)
+        3    0.000    0.000    0.000    0.000 {method 'copy' of 'dict' objects}
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        1    0.000    0.000    0.000    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\sessions.py:390(__init__)
+        3    0.000    0.000    0.000    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\adapters.py:178(__init__)
+        3    0.000    0.000    0.000    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\util\retry.py:211(__init__)
+        4    0.000    0.000    0.000    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\sessions.py:799(mount)
+        3    0.000    0.000    0.000    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\poolmanager.py:199(__init__)
+        2    0.000    0.000    0.000    0.000 <frozen _collections_abc>:963(update)
+        3    0.000    0.000    0.000    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\adapters.py:216(init_poolmanager)
+        1    0.000    0.000    0.000    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\cookies.py:521(cookiejar_from_dict)
+      2/1    0.000    0.000    0.000    0.000 {built-in method _abc._abc_subclasscheck}
+        3    0.000    0.000    0.000    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\urllib3\_collections.py:82(__init__)
+        1    0.000    0.000    0.000    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\http\cookiejar.py:1262(__init__)
+       14    0.000    0.000    0.000    0.000 {method 'lower' of 'str' objects}
+        1    0.000    0.000    0.000    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\structures.py:40(__init__)
+        5    0.000    0.000    0.000    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\requests\structures.py:46(__setitem__)
+
+
+
+Elapsed: 0.512s
+Current mem: 128.0 KiB
+Peak mem: 321.6 KiB
+
+Top memory growth:
+C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\api_handler.py:111: size=32.6 KiB (+32.6 KiB), count=520 (+520), average=64 B
+C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\api_handler.py:104: size=31.6 KiB (+31.6 KiB), count=506 (+506), average=64 B
+C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\tools\perf_profile.py:128: size=31.6 KiB (+31.6 KiB), count=505 (+505), average=64 B
+C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\tools\perf_profile.py:127: size=10.4 KiB (+10.4 KiB), count=121 (+121), average=88 B
+C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\tools\perf_profile.py:126: size=3040 B (+3040 B), count=95 (+95), average=32 B
+C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\api_handler.py:102: size=2507 B (+2507 B), count=98 (+98), average=26 B
+C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\tools\perf_profile.py:72: size=2013 B (+2013 B), count=29 (+29), average=69 B
+C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\tools\perf_profile.py:74: size=886 B (+886 B), count=15 (+15), average=59 B
+<frozen abc>:123: size=764 B (+764 B), count=10 (+10), average=76 B
+C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\api_handler.py:103: size=528 B (+528 B), count=8 (+8), average=66 B

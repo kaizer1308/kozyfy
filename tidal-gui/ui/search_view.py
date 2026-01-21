@@ -1,4 +1,5 @@
 import customtkinter as ctk
+from collections import deque
 from .theme import COLORS, FONTS, RADII
 
 class SearchResultsView(ctk.CTkScrollableFrame):
@@ -13,15 +14,18 @@ class SearchResultsView(ctk.CTkScrollableFrame):
         )
         self.on_play = on_play
         self.on_download = on_download
-        self._pending_items = []
+        self._pending_items = deque()
         self._render_job = None
         self._render_batch_size = 20
+        self._render_interval_ms = 16
+        self._compact_mode = False
+        self._compact_threshold = 150
 
     def clear(self):
         if self._render_job is not None:
             self.after_cancel(self._render_job)
             self._render_job = None
-        self._pending_items = []
+        self._pending_items.clear()
         for widget in self.winfo_children():
             widget.destroy()
 
@@ -36,7 +40,8 @@ class SearchResultsView(ctk.CTkScrollableFrame):
 
     def populate(self, items):
         self.clear()
-        self._pending_items = list(items)
+        self._pending_items = deque(items)
+        self._compact_mode = len(items) >= self._compact_threshold
         self._render_next_batch()
 
     def _render_next_batch(self):
@@ -46,11 +51,11 @@ class SearchResultsView(ctk.CTkScrollableFrame):
 
         batch_count = min(self._render_batch_size, len(self._pending_items))
         for _ in range(batch_count):
-            item = self._pending_items.pop(0)
+            item = self._pending_items.popleft()
             self._create_row(item)
 
         if self._pending_items:
-            self._render_job = self.after(1, self._render_next_batch)
+            self._render_job = self.after(self._render_interval_ms, self._render_next_batch)
         else:
             self._render_job = None
 
@@ -105,53 +110,57 @@ class SearchResultsView(ctk.CTkScrollableFrame):
         elif "Lossless" in display_quality:
             q_color = COLORS["accent_alt"]
 
+        use_compact = self._compact_mode
         row_frame = ctk.CTkFrame(
             self,
             fg_color=COLORS["panel_alt"],
-            corner_radius=RADII["button"],
-            border_width=1,
+            corner_radius=0 if use_compact else RADII["button"],
+            border_width=0 if use_compact else 1,
             border_color=COLORS["border"],
         )
-        row_frame.pack(fill="x", pady=6, padx=6)
-        
-        # Info Group
-        info_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
-        info_frame.pack(side="left", padx=12, pady=10, fill="x", expand=True)
-        
+        row_frame.pack(fill="x", pady=4 if use_compact else 6, padx=6)
+        row_frame.grid_columnconfigure(0, weight=1)
+
         title_lbl = ctk.CTkLabel(
-            info_frame,
+            row_frame,
             text=title,
             font=FONTS["subtitle"],
             text_color=COLORS["text"],
             anchor="w",
         )
-        title_lbl.pack(fill="x")
+        title_lbl.grid(row=0, column=0, sticky="w", padx=12, pady=(10, 0))
         
         if item_type == "ALBUM":
             release_date = item.get("releaseDate", "")
             tracks_count = item.get("numberOfTracks", 0)
             sub_text = f"Album • {artist} • {tracks_count} Tracks • {release_date}"
             
+            if use_compact and quality_detail and quality_detail != "Unknown":
+                sub_text = f"{sub_text} • {quality_detail}"
+
             sub_lbl = ctk.CTkLabel(
-                info_frame,
+                row_frame,
                 text=sub_text,
                 font=FONTS["body"],
                 text_color=COLORS["text_muted"],
                 anchor="w",
             )
-            sub_lbl.pack(fill="x")
-            
-            qual_lbl = ctk.CTkLabel(
-                row_frame,
-                text=quality_detail,
-                text_color=q_color,
-                font=FONTS["small_bold"],
-                width=150,
-                anchor="e",
-                justify="right",
-                wraplength=150
-            )
-            qual_lbl.pack(side="right", padx=(5, 10))
+            sub_lbl.grid(row=1, column=0, sticky="w", padx=12, pady=(0, 10))
+
+            col = 1
+            if not use_compact:
+                qual_lbl = ctk.CTkLabel(
+                    row_frame,
+                    text=quality_detail,
+                    text_color=q_color,
+                    font=FONTS["small_bold"],
+                    width=150,
+                    anchor="e",
+                    justify="right",
+                    wraplength=150
+                )
+                qual_lbl.grid(row=0, column=col, rowspan=2, sticky="e", padx=(5, 10))
+                col += 1
 
             # Download Button (Album)
             dl_btn = ctk.CTkButton(
@@ -166,7 +175,7 @@ class SearchResultsView(ctk.CTkScrollableFrame):
                 font=FONTS["small_bold"],
                 command=lambda: self.on_download(item_id, f"{artist} - {title}", "ALBUM"),
             )
-            dl_btn.pack(side="right", padx=12, pady=10)
+            dl_btn.grid(row=0, column=col, rowspan=2, sticky="e", padx=(5, 10), pady=10)
             
         else: # TRACK
             album = item.get("album", {}).get("title", "Unknown Album")
@@ -178,26 +187,32 @@ class SearchResultsView(ctk.CTkScrollableFrame):
             time_str = f"{mins}:{secs:02d}"
 
             sub_text = f"{artist} • {album} • {time_str}"
+            if use_compact and quality_detail and quality_detail != "Unknown":
+                sub_text = f"{sub_text} • {quality_detail}"
+
             sub_lbl = ctk.CTkLabel(
-                info_frame,
+                row_frame,
                 text=sub_text,
                 font=FONTS["body"],
                 text_color=COLORS["text_muted"],
                 anchor="w",
             )
-            sub_lbl.pack(fill="x")
-            
-            qual_lbl = ctk.CTkLabel(
-                row_frame,
-                text=quality_detail,
-                text_color=q_color,
-                font=FONTS["small_bold"],
-                width=150,
-                anchor="e",
-                justify="right",
-                wraplength=150
-            )
-            qual_lbl.pack(side="right", padx=(5, 10))
+            sub_lbl.grid(row=1, column=0, sticky="w", padx=12, pady=(0, 10))
+
+            col = 1
+            if not use_compact:
+                qual_lbl = ctk.CTkLabel(
+                    row_frame,
+                    text=quality_detail,
+                    text_color=q_color,
+                    font=FONTS["small_bold"],
+                    width=150,
+                    anchor="e",
+                    justify="right",
+                    wraplength=150
+                )
+                qual_lbl.grid(row=0, column=col, rowspan=2, sticky="e", padx=(5, 10))
+                col += 1
 
             # Download Button
             dl_btn = ctk.CTkButton(
@@ -212,7 +227,8 @@ class SearchResultsView(ctk.CTkScrollableFrame):
                 font=FONTS["small_bold"],
                 command=lambda: self.on_download(item_id, f"{artist} - {title}", "TRACK"),
             )
-            dl_btn.pack(side="right", padx=12, pady=10)
+            dl_btn.grid(row=0, column=col, rowspan=2, sticky="e", padx=(5, 8), pady=10)
+            col += 1
 
             # Play Button
             play_btn = ctk.CTkButton(
@@ -227,4 +243,4 @@ class SearchResultsView(ctk.CTkScrollableFrame):
                 font=FONTS["small_bold"],
                 command=lambda: self.on_play(item_id),
             )
-            play_btn.pack(side="right", padx=6, pady=10)
+            play_btn.grid(row=0, column=col, rowspan=2, sticky="e", padx=(0, 10), pady=10)

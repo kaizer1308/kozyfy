@@ -45,3 +45,6 @@ dist/
 
 #hifi-api
 hifi-api
+
+# perf
+tidal-gui\tools

@@ -89,6 +89,26 @@ Settings are stored in `%APPDATA%\Kozyfy\`
 
 Default download location: `Music\Kozyfy Downloads`
 
+## Performance profiling
+
+Use the profiling harness to capture CPU + memory hotspots when rendering results
+or exercising the API cache. It writes a `.prof` file plus a readable `.txt` summary.
+
+```bash
+# Profile UI rendering (default 500 items)
+python tools/perf_profile.py render --items 800
+
+# Profile cache insert/get behavior
+python tools/perf_profile.py cache --entries 3000
+```
+
+Output defaults to a temp directory (e.g. `%TEMP%\Kozyfy\profiling`). Open the
+`.txt` report directly or load the `.prof` file with:
+
+```bash
+python -m pstats path\to\render.prof
+```
+
 ## License
 
 See LICENSE file for details.

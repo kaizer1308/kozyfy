@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import time
+import heapq
 import logging
 import queue
 from collections import deque
@@ -35,6 +36,7 @@ class TidalApiHandler:
         self._session.headers.update(self._default_headers)
         self._timeout = (3.05, 15)
         self._cache = {}
+        self._cache_expirations = []
         self._cache_lock = threading.Lock()
         self._cache_ttl_sec = 300
         self._search_cache_ttl_sec = 60
@@ -102,15 +104,41 @@ class TidalApiHandler:
         expires_at = time.monotonic() + (ttl or self._cache_ttl_sec)
         with self._cache_lock:
             self._cache[cache_key] = (expires_at, value)
-            if len(self._cache) > self._cache_max_entries:
-                now = time.monotonic()
-                expired_keys = [key for key, (exp, _) in self._cache.items() if exp < now]
-                for key in expired_keys:
-                    self._cache.pop(key, None)
-                if len(self._cache) > self._cache_max_entries:
-                    oldest_keys = sorted(self._cache.items(), key=lambda item: item[1][0])
-                    for key, _ in oldest_keys[: len(self._cache) - self._cache_max_entries]:
-                        self._cache.pop(key, None)
+            heapq.heappush(self._cache_expirations, (expires_at, cache_key))
+            self._evict_cache_locked()
+
+    def _evict_cache_locked(self):
+        now = time.monotonic()
+        while self._cache_expirations:
+            expires_at, cache_key = self._cache_expirations[0]
+            entry = self._cache.get(cache_key)
+            if not entry:
+                heapq.heappop(self._cache_expirations)
+                continue
+            current_exp, _ = entry
+            if current_exp != expires_at:
+                heapq.heappop(self._cache_expirations)
+                continue
+            if current_exp < now:
+                heapq.heappop(self._cache_expirations)
+                self._cache.pop(cache_key, None)
+                continue
+            break
+
+        while len(self._cache) > self._cache_max_entries and self._cache_expirations:
+            expires_at, cache_key = heapq.heappop(self._cache_expirations)
+            entry = self._cache.get(cache_key)
+            if not entry:
+                continue
+            current_exp, _ = entry
+            if current_exp != expires_at:
+                continue
+            self._cache.pop(cache_key, None)
+
+        if len(self._cache) > self._cache_max_entries and not self._cache_expirations:
+            overflow = len(self._cache) - self._cache_max_entries
+            for cache_key in list(self._cache.keys())[:overflow]:
+                self._cache.pop(cache_key, None)
 
     def search_tracks(self, query):
         """

@@ -1,0 +1,54 @@
+         6959066 function calls (6531560 primitive calls) in 25.017 seconds
+
+   Ordered by: internal time
+   List reduced from 298 to 30 due to restriction <30>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+425488/20555   11.391    0.000   24.135    0.001 {method 'call' of '_tkinter.tkapp' objects}
+   144258    2.321    0.000    4.905    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:1652(_options)
+     6104    0.836    0.000   11.604    0.002 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\customtkinter\windows\widgets\core_rendering\draw_engine.py:186(__draw_rounded_rect_with_border_font_shapes)
+    55807    0.728    0.000    6.275    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\customtkinter\windows\widgets\core_rendering\ctk_canvas.py:83(coords)
+   146826    0.697    0.000    1.336    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:63(_stringify)
+  1987393    0.618    0.000    0.618    0.000 {built-in method builtins.isinstance}
+   293652    0.549    0.000    0.549    0.000 {method 'search' of 're.Pattern' objects}
+     3503    0.452    0.000    0.958    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\typing.py:3125(__new__)
+    87211    0.434    0.000    5.404    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:1816(_configure)
+   315303    0.369    0.000    0.369    0.000 {built-in method _tkinter._flatten}
+   239977    0.369    0.000    0.784    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:106(_cnfmerge)
+     8558    0.336    0.000    0.935    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:1731(_substitute)
+   153568    0.305    0.000    0.305    0.000 {method 'getint' of '_tkinter.tkapp' objects}
+   231920    0.260    0.000    0.260    0.000 {method 'append' of 'list' objects}
+   202306    0.226    0.000    0.226    0.000 {method 'update' of 'dict' objects}
+        1    0.223    0.223    0.223    0.223 {built-in method _tkinter.create}
+     5610    0.220    0.000    1.570    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\customtkinter\windows\widgets\core_rendering\ctk_canvas.py:101(itemconfig)
+    28027    0.212    0.000    3.968    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:2982(_create)
+    92865    0.211    0.000    0.238    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:1619(_getints)
+    89602    0.182    0.000    0.182    0.000 {method 'join' of 'str' objects}
+   160773    0.171    0.000    0.171    0.000 {method 'items' of 'dict' objects}
+   216173    0.154    0.000    0.154    0.000 {method 'splitlist' of '_tkinter.tkapp' objects}
+    55807    0.142    0.000    1.439    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:2975(coords)
+    92790    0.131    0.000    0.613    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:3044(find)
+     3503    0.130    0.000    1.858    0.001 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\customtkinter\windows\widgets\core_widget_classes\ctk_base_class.py:32(__init__)
+      500    0.125    0.000   14.585    0.029 C:\Users\kozydot\Documents\TidalHIFI\tidal-gui\ui\search_view.py:59(_create_row)
+     1501    0.123    0.000    2.777    0.002 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\customtkinter\windows\widgets\ctk_label.py:25(__init__)
+     9509    0.121    0.000    0.150    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:2744(_setup)
+    94138    0.120    0.000    0.317    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:1737(getint_event)
+     9509    0.114    0.000    1.213    0.000 C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:2776(__init__)
+
+
+
+Elapsed: 25.018s
+Current mem: 13477.2 KiB
+Peak mem: 19006.0 KiB
+
+Top memory growth:
+C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:2759: size=2541 KiB (+2541 KiB), count=6505 (+6505), average=400 B
+C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:116: size=1702 KiB (+1702 KiB), count=14938 (+14938), average=117 B
+C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:2770: size=1078 KiB (+1078 KiB), count=10508 (+10508), average=105 B
+C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\customtkinter\windows\widgets\core_rendering\ctk_canvas.py:79: size=1001 KiB (+1001 KiB), count=2003 (+2003), average=512 B
+C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\customtkinter\windows\widgets\ctk_button.py:63: size=750 KiB (+750 KiB), count=1000 (+1000), average=768 B
+C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\customtkinter\windows\widgets\core_rendering\ctk_canvas.py:32: size=739 KiB (+739 KiB), count=3503 (+3503), average=216 B
+C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:2771: size=594 KiB (+594 KiB), count=9505 (+9505), average=64 B
+C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\site-packages\customtkinter\windows\widgets\core_widget_classes\ctk_base_class.py:297: size=437 KiB (+437 KiB), count=6998 (+6998), average=64 B
+C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:2763: size=388 KiB (+388 KiB), count=8010 (+8010), average=50 B
+C:\Users\kozydot\AppData\Local\Programs\Python\Python314\Lib\tkinter\__init__.py:2755: size=380 KiB (+380 KiB), count=8011 (+8011), average=49 B
